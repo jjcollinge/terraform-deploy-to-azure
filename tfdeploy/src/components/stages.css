@@ -1,0 +1,39 @@
+.stage-box {
+    border-radius:5px;
+    width:75px;
+    height:75px;
+    text-align: center;
+    margin: auto;
+}
+
+.stage-box div {
+    display: inline-block;
+    position: relative;
+    top: 50%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
+}
+
+
+.stage-title {
+    padding-top: 10px;
+}
+
+.stage-active {
+    background-color: #00B050;
+}
+
+.stage-inactive {
+    background-color: #4E42C3;
+}
+
+.stage-list {
+    list-style-type: none;
+    padding-left: 0%;
+}
+
+.stage-list li {
+    display: inline-block;
+    padding: 30px;
+}
