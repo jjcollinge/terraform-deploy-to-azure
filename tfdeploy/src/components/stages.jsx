@@ -12,15 +12,15 @@ class Stages extends Component {
             var stageClass = index == this.state.currentStage ? "stage-box stage-active" : "stage-box stage-inactive"
             return (
                 <li key={index}>
-                    <div class={stageClass}>
-                        <div>{index+1}</div>
+                    <div className={stageClass}>
+                        <div className="stage-index">{index+1}</div>
                     </div>
-                    <div class="stage-title">
+                    <div className="stage-title">
                         <h5>{name}</h5>
                     </div>
                 </li>);
         });
-        return <ul id="stages" className="stage-list">{stages}</ul>
+        return <ul className="stage-list">{stages}</ul>
     }
 }
 

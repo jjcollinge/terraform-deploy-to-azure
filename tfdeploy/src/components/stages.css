@@ -6,15 +6,13 @@
     margin: auto;
 }
 
-.stage-box div {
-    display: inline-block;
+.stage-index {
     position: relative;
     top: 50%;
     -webkit-transform: translateY(-50%);
     -ms-transform: translateY(-50%);
     transform: translateY(-50%);
 }
-
 
 .stage-title {
     padding-top: 10px;
@@ -30,10 +28,16 @@
 
 .stage-list {
     list-style-type: none;
-    padding-left: 0%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 400px;
+    margin: auto;
+    padding: 20px 0;
 }
 
 .stage-list li {
-    display: inline-block;
-    padding: 30px;
+    width: 75px;
+    width: 75px;
+    margin: auto;
 }
