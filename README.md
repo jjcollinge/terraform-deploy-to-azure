@@ -6,7 +6,9 @@ Azure has a great feature feature called 'Deploy to Azure' that allows you to si
 
 [![Deploy to Azure](http://azuredeploy.net/deploybutton.png)](https://azuredeploy.net/)
 
-This will allow you to take a Azure Resoure Manager (ARM) template and push it straight into Azure. Once you've clicked the button, a website will prompt you to input any required paramters for the given template and will then execute the template deployment. This is a frictionless way to allow your users to get up and running with your Azure resources. We want to replicate this experience but with Terraform Plans rather than ARM templates.
+The 'Deploy to Azure' button will take a Azure Resoure Manager (ARM) template and push it straight into Azure. Once the button is clicked, a website prompts the user to input any required paramters for the given template. Once the required parameters are supplied, the site will then execute the template deployment. 
+
+The 'Deploy to Azure' button is a frictionless way to allow your users to get up and running with your Azure resources. We want to replicate this experience with Terraform Plans, rather than ARM templates, opening up this frictionless mechanism to those who'd rather use Terraform to describe their Azure resources.
 
 ## Proposal
 Below is our draft proposal for how to build this system. We want it to be as simple and intuitive as possible for the user.
@@ -17,7 +19,7 @@ Below is our draft proposal for how to build this system. We want it to be as si
 These screen assume the authentication process has been completed and you're now logged in as Joe Bloggs.
 
 ### Setup Screen
-This page will display the user with a form to input any variables that are needed by their Terraform template. Any default values will already be placeholder in the associated field. Sanitization and validation will run asynchronously against each input field. Once the user has provided all the required fields, they will be able to progress to the next screen.
+This page will display the user with a form to input any variables that are needed by their Terraform template. Any default values will already be present, as placeholders, in the associated fields. Sanitization and validation will run asynchronously against each input field. Once the user has provided all the required fields, they will be able to progress to the next screen.
 ![](docs/images/tfdeploy-screen0.png)
 
 ### Preview Screen
