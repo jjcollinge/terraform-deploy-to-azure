@@ -4,7 +4,7 @@
 <head>
     <script type="text/javascript">
         function connect() {
-            var ws = new WebSocket("ws://localhost:3012/service");
+            var ws = new WebSocket("ws://localhost:3013/service");
             ws.onopen = function () {
                 ws.send("start"); // I WANT TO SEND THIS MESSAGE TO THE SERVER!!!!!!!!
             };
