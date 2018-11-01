@@ -95,6 +95,8 @@ fn main() {
         .send(line.expect("failed reading line"))
         .expect("send to chan failed")
     }
+    drop(stdout_input)
+
     // }
   });
 
@@ -108,7 +110,12 @@ fn main() {
         .send(line.expect("failed reading line"))
         .expect("send to chan failed")
     }
+
+    drop(stderr_input)
   });
+
+  // drop the main sender that we cloned from for each of the threads
+  drop(input);
 
   loop {
     // if connection. {
@@ -118,10 +125,17 @@ fn main() {
     // }
 
     let cmd_output = combinded_cmd_output.try_recv();
-    if !cmd_output.is_err() {
-      let cmd_txt = cmd_output.unwrap();
-      connection.send(Message::Text(cmd_txt));
-    }
+    let cmd_output = match cmd_output {
+      Ok(txt) => txt,
+      Err(error) if error == std::sync::mpsc::TryRecvError::Disconnected => {
+        connection.send(Message::Text("command exited".to_string()));
+        return;
+      }
+      Err(error) if error == std::sync::mpsc::TryRecvError::Empty => continue,
+      Err(_) => continue,
+    };
+
+    connection.send(Message::Text(cmd_output));
 
     let stdin = rx_stdin.try_recv();
     if !stdin.is_err() {
@@ -129,5 +143,7 @@ fn main() {
       println!("Message received {}", stdin_txt);
       connection.send(Message::Text(stdin_txt));
     }
+
+    std::thread::sleep_ms(100);
   }
 }
