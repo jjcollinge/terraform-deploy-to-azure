@@ -2,7 +2,8 @@
 // extern crate duct;
 extern crate ws;
 
-use std::io::{BufRead, BufReader};
+use std::io::Write;
+use std::io::{BufRead, BufReader, BufWriter};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -15,41 +16,15 @@ use ws::CloseCode;
 use ws::Handler;
 use ws::{listen, Message, Result, Sender as ws_sender};
 
-// fn main() {
-//   listen("127.0.0.1:3012", |sender| {
-//     move |msg: Message| {
-//       // Listen for initial "start" message to be sent
-//       if msg.as_text().ok().unwrap_or("fail") == "start" {
-//         sender.send(msg).expect("failed sending");
-//         sender
-//           .send(Message::Text("starting".to_string()))
-//           .expect("failed sending");
-
-//
-
-//         while true {
-//           let line = output.recv().unwrap();
-//           sender.send(Message::Text(line)).expect("didn't send")
-//         }
-
-//         return sender.send(Message::Text(format!("Done edit code: {}", 0)));
-//       }
-
-//       // Send done once the iteration has finished
-//       sender.send(Message::Text("Done".to_string()))
-//     }
-//   }).unwrap()
-// }
-
 fn main() {
   // Data to be sent across WebSockets and channels
-  let (tx, rx) = channel::<ws::Sender>();
+  let (tx_connections, rx_connections) = channel::<ws::Sender>();
   let (tx_stdin, rx_stdin) = channel();
 
   let socket = ws::Builder::new()
     .build(move |out: ws::Sender| {
       // When we get a connection, send a handle to the parent thread
-      tx.send(out).unwrap();
+      tx_connections.send(out).unwrap();
       let tx_stdin = tx_stdin.clone();
 
       // Dummy message handler
@@ -67,27 +42,29 @@ fn main() {
     socket.listen("127.0.0.1:3013").unwrap();
   });
 
+  // Wait 600 seconds for a connection to be made
   let d = Duration::from_secs(600);
-  let connection = rx.recv_timeout(d).unwrap();
+  let connection = rx_connections.recv_timeout(d).unwrap();
 
+  // When a connection is made start TF client
   let child = Command::new("terraform")
     .args(&["plan"])
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
+    .stdin(Stdio::piped())
     .current_dir("/home/lawrence/source/tf/azure-aks-terraform")
     .spawn()
     .expect("failed to execute process");
 
+  // Create a channel for both stdout and stderr to write too 
   let (input, combinded_cmd_output) = channel();
+
+  // Create clones and copies for use by the stdout reader thread 
   let stdout_input = input.clone();
-  let stderr_input = input.clone();
-
   let stdout_pipe = child.stdout.unwrap();
-  let stderr_pipe = child.stderr.unwrap();
 
+  // Start thread to read from stdout
   thread::spawn(move || {
-    // loop through stdout returned from command
-    // if let Some(ref mut stdout) = stdout_pipe {
     let lines = BufReader::new(stdout_pipe).lines().enumerate();
     for (counter, line) in lines {
       println!("{}, {:?}", counter, line);
@@ -95,11 +72,17 @@ fn main() {
         .send(line.expect("failed reading line"))
         .expect("send to chan failed")
     }
-    drop(stdout_input)
 
-    // }
+    // If the pipe has returned EOF it means the 
+    // process has exited. Close the sender
+    drop(stdout_input)
   });
 
+  // Create clones and copies for use by the stderr reader thread 
+  let stderr_input = input.clone();
+  let stderr_pipe = child.stderr.unwrap();
+
+  // Start thread to read from stderr
   thread::spawn(move || {
     let lines = BufReader::new(stderr_pipe).lines().enumerate();
     for (counter, line) in lines {
@@ -111,37 +94,61 @@ fn main() {
         .expect("send to chan failed")
     }
 
+    // If the pipe has returned EOF it means the 
+    // process has exited. Close the sender
     drop(stderr_input)
   });
 
   // drop the main sender that we cloned from for each of the threads
   drop(input);
 
-  loop {
-    // if connection. {
-    //   handle.shutdown().unwrap();
-    //   println!("Shutting down server because no connections were established.");
-    //   return
-    // }
+  // Create a writer for the stdin of the process
+  let mut stdin_pipe = child.stdin.unwrap();
+  let mut stdin_writer = BufWriter::new(&mut stdin_pipe);
 
+  loop {
+    // Check if any new connections have been made 
+    // as we only support 1 connection at a time close them 
+    // with an invalid error code
+    let new_connection = rx_connections.try_recv();
+    if !new_connection.is_err() {
+      new_connection.unwrap().close(ws::CloseCode::Invalid).unwrap();
+    }
+
+    // Check for new output from the command
     let cmd_output = combinded_cmd_output.try_recv();
     let cmd_output = match cmd_output {
       Ok(txt) => txt,
       Err(error) if error == std::sync::mpsc::TryRecvError::Disconnected => {
-        connection.send(Message::Text("command exited".to_string()));
+        // This means both the senders have disconnected for stdout and stderr which 
+        // means the process has exited. 
+        connection.send(Message::Text("command exited".to_string())).unwrap();
+
+        // Shutdown the server and exit
+        handle.shutdown().unwrap();
+        println!("Shutting down server because no connections were established.");
         return;
       }
+      // This case handles when the process is still running but hasn't output any
+      // the lines to the console
       Err(error) if error == std::sync::mpsc::TryRecvError::Empty => continue,
       Err(_) => continue,
     };
 
-    connection.send(Message::Text(cmd_output));
+    // Send the new line to the client over it's connection
+    connection.send(Message::Text(cmd_output)).unwrap();
 
     let stdin = rx_stdin.try_recv();
     if !stdin.is_err() {
       let stdin_txt = stdin.unwrap();
+
+      // Write message into stdin
+      stdin_writer.write_all(stdin_txt.as_bytes()).unwrap();
+
+      // Log and echo back to client
       println!("Message received {}", stdin_txt);
-      connection.send(Message::Text(stdin_txt));
+      connection.send("Written back to stdin".to_string()).unwrap();
+      connection.send(Message::Text(stdin_txt)).unwrap();
     }
 
     std::thread::sleep_ms(100);
