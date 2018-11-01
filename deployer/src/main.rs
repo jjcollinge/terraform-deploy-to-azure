@@ -48,18 +48,19 @@ fn main() {
 
   // When a connection is made start TF client
   let child = Command::new("terraform")
-    .args(&["plan"])
+    .args(&["apply"])
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .stdin(Stdio::piped())
-    .current_dir("/home/lawrence/source/tf/azure-aks-terraform")
+    .env("TF_LOG", "WARN")
+    .current_dir("/home/lawrence/go/src/github.com/terraform-providers/terraform-provider-kubernetes/_examples/yaml")
     .spawn()
     .expect("failed to execute process");
 
-  // Create a channel for both stdout and stderr to write too 
+  // Create a channel for both stdout and stderr to write too
   let (input, combinded_cmd_output) = channel();
 
-  // Create clones and copies for use by the stdout reader thread 
+  // Create clones and copies for use by the stdout reader thread
   let stdout_input = input.clone();
   let stdout_pipe = child.stdout.unwrap();
 
@@ -73,12 +74,12 @@ fn main() {
         .expect("send to chan failed")
     }
 
-    // If the pipe has returned EOF it means the 
+    // If the pipe has returned EOF it means the
     // process has exited. Close the sender
     drop(stdout_input)
   });
 
-  // Create clones and copies for use by the stderr reader thread 
+  // Create clones and copies for use by the stderr reader thread
   let stderr_input = input.clone();
   let stderr_pipe = child.stderr.unwrap();
 
@@ -94,7 +95,7 @@ fn main() {
         .expect("send to chan failed")
     }
 
-    // If the pipe has returned EOF it means the 
+    // If the pipe has returned EOF it means the
     // process has exited. Close the sender
     drop(stderr_input)
   });
@@ -107,12 +108,33 @@ fn main() {
   let mut stdin_writer = BufWriter::new(&mut stdin_pipe);
 
   loop {
-    // Check if any new connections have been made 
-    // as we only support 1 connection at a time close them 
+    // Handle receiving input over the websocket 
+    // send the txt to stdin
+    let stdin = rx_stdin.try_recv();
+    if !stdin.is_err() {
+      let stdin_txt = stdin.unwrap();
+
+      // Write message into stdin
+      stdin_writer.write_all(stdin_txt.as_bytes()).unwrap();
+      stdin_writer.flush().unwrap();
+
+      // Log and echo back to client
+      println!("Message received {}", stdin_txt);
+      connection
+        .send("Written back to stdin".to_string())
+        .unwrap();
+      connection.send(Message::Text(stdin_txt)).unwrap();
+    }
+
+    // Check if any new connections have been made
+    // as we only support 1 connection at a time close them
     // with an invalid error code
     let new_connection = rx_connections.try_recv();
     if !new_connection.is_err() {
-      new_connection.unwrap().close(ws::CloseCode::Invalid).unwrap();
+      new_connection
+        .unwrap()
+        .close(ws::CloseCode::Invalid)
+        .unwrap();
     }
 
     // Check for new output from the command
@@ -120,9 +142,11 @@ fn main() {
     let cmd_output = match cmd_output {
       Ok(txt) => txt,
       Err(error) if error == std::sync::mpsc::TryRecvError::Disconnected => {
-        // This means both the senders have disconnected for stdout and stderr which 
-        // means the process has exited. 
-        connection.send(Message::Text("command exited".to_string())).unwrap();
+        // This means both the senders have disconnected for stdout and stderr which
+        // means the process has exited.
+        connection
+          .send(Message::Text("command exited".to_string()))
+          .unwrap();
 
         // Shutdown the server and exit
         handle.shutdown().unwrap();
@@ -138,19 +162,6 @@ fn main() {
     // Send the new line to the client over it's connection
     connection.send(Message::Text(cmd_output)).unwrap();
 
-    let stdin = rx_stdin.try_recv();
-    if !stdin.is_err() {
-      let stdin_txt = stdin.unwrap();
-
-      // Write message into stdin
-      stdin_writer.write_all(stdin_txt.as_bytes()).unwrap();
-
-      // Log and echo back to client
-      println!("Message received {}", stdin_txt);
-      connection.send("Written back to stdin".to_string()).unwrap();
-      connection.send(Message::Text(stdin_txt)).unwrap();
-    }
-
-    std::thread::sleep_ms(100);
+    std::thread::sleep_ms(30);
   }
 }

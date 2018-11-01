@@ -3,8 +3,9 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
     <script type="text/javascript">
+        var ws = "";
         function connect() {
-            var ws = new WebSocket("ws://localhost:3013/service");
+            ws = new WebSocket("ws://localhost:3013/service")
             ws.onopen = function () {
                 ws.send("start"); // I WANT TO SEND THIS MESSAGE TO THE SERVER!!!!!!!!
             };
@@ -17,12 +18,20 @@
                 console.log("Connection is closed...");
             };
         };
-
+        function accept() {
+            ws.send("yes\r\n");
+            // ws.send("\r");
+            // ws.send("\r\n");
+            // ws.send("\n");
+            // ws.send("\u23CE");
+            // ws.send("\u{23ce}");
+        }
 
     </script>
 </head>
 <body style="font-size:xx-large" >
     <div>
-    <a href="#" onclick="connect(); connect()">Click here to start</a></div>
+    <a href="#" onclick="connect();">Click here to start</a></div>
+    <a href="#" onclick="accept();">Accept</a></div>
 </body>
 </html>
