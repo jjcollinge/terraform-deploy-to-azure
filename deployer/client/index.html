@@ -1,0 +1,28 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" 
+    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <script type="text/javascript">
+        function connect() {
+            var ws = new WebSocket("ws://localhost:3012/service");
+            ws.onopen = function () {
+                ws.send("start"); // I WANT TO SEND THIS MESSAGE TO THE SERVER!!!!!!!!
+            };
+
+            ws.onmessage = function (evt) {
+                console.log(evt.data)
+                // var received_msg = evt.data;
+            };
+            ws.onclose = function () {
+                console.log("Connection is closed...");
+            };
+        };
+
+
+    </script>
+</head>
+<body style="font-size:xx-large" >
+    <div>
+    <a href="#" onclick="connect()">Click here to start</a></div>
+</body>
+</html>
