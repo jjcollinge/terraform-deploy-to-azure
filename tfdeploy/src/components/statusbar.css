@@ -1,0 +1,23 @@
+.statusbar {
+    background-color: #262626;
+    height: 3em;
+}
+
+.statusbar-gitinfo {
+    margin: auto;
+    width: 50%;
+    text-align: center;
+}
+
+.statusbar-giturl {
+    color: #a8a8a8;
+}
+
+.statusbar-gitbranch {
+    margin-left: 3em;
+}
+
+.statusbar .btn, .btn:hover, .btn:active, .btn:visited {
+    background-color: #00B050 !important;
+    color: #ffffff
+}

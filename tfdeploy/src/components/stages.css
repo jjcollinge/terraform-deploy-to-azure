@@ -2,8 +2,9 @@
     border-radius:5px;
     width:75px;
     height:75px;
-    text-align: center;
     margin: auto;
+    text-align: center;
+    color: #ffffff;
 }
 
 .stage-index {
@@ -16,6 +17,8 @@
 
 .stage-title {
     padding-top: 10px;
+    text-align: center;
+    color: #ffffff;
 }
 
 .stage-active {
