@@ -19,6 +19,23 @@
       work correctly both with client-side routing and a non-root public URL.
       Learn how to configure a non-root public URL by running `npm run build`.
     -->
+    <script src="https://isomorphic-git.org/js/browserfs.js"></script>
+    <script src="https://isomorphic-git.org/js/pify.js"></script>
+    <script src="https://unpkg.com/isomorphic-git"></script>
+    <script>
+    let fsOptions = {
+      fs: 'InMemory',
+      options: {}
+    }
+    BrowserFS.configure(fsOptions, function (err) {
+      if (err) return console.log(err)
+      window.fs = BrowserFS.BFSRequire('fs')
+      // Initialize isomorphic-git with our new file system
+      git.plugins.set('fs', fs)
+      // make a Promisified version for convenience
+      window.pfs = pify(fs)
+    })
+    </script>
     <title>React App</title>
   </head>
   <body>
