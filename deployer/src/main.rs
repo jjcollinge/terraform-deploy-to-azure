@@ -1,5 +1,3 @@
-// extern crate scoped_threadpool;
-// extern crate duct;
 extern crate ws;
 
 use std::io::Write;
@@ -29,9 +27,9 @@ fn main() {
 
       // Dummy message handler
       move |msg: Message| {
-        let msgStr = msg.into_text().unwrap();
-        println!("Message handler called. {}", msgStr);
-        tx_stdin.send(msgStr).expect("send failed");
+        let msg_str = msg.into_text().unwrap();
+        println!("Message handler called. {}", msg_str);
+        tx_stdin.send(msg_str).expect("send failed");
         Ok(())
       }
     }).unwrap();
@@ -108,7 +106,7 @@ fn main() {
   let mut stdin_writer = BufWriter::new(&mut stdin_pipe);
 
   loop {
-    // Handle receiving input over the websocket 
+    // Handle receiving input over the websocket
     // send the txt to stdin
     let stdin = rx_stdin.try_recv();
     if !stdin.is_err() {
@@ -119,7 +117,11 @@ fn main() {
       stdin_writer.flush().unwrap();
 
       // Log and echo back to client
-      println!("Message received {}", stdin_txt);
+      println!(
+        "Message received: {} bytes: {:?}",
+        stdin_txt,
+        stdin_txt.as_bytes()
+      );
       connection
         .send("Written back to stdin".to_string())
         .unwrap();
@@ -162,6 +164,45 @@ fn main() {
     // Send the new line to the client over it's connection
     connection.send(Message::Text(cmd_output)).unwrap();
 
-    std::thread::sleep_ms(30);
+    std::thread::sleep_ms(20);
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  extern crate ws;
+
+  use main;
+  use std::thread;
+  use ws::Message;
+
+  use ws::connect;
+
+  #[test]
+  fn test_accept_works() {
+    // Start server
+    let t = thread::spawn(move || main());
+
+    // Connect to the url and call the closure
+    if let Err(error) = connect("ws://127.0.0.1:3013", |out| {
+      thread::spawn(move || {
+        std::thread::sleep_ms(8000);
+
+        // Queue a message to be sent when the WebSocket is open
+        if out.send("yes\n").is_err() {
+          println!("Websocket couldn't queue an initial message.")
+        } else {
+          println!("Client sentk message 'yes\n'. ")
+        }
+      });
+
+      move |msg: Message| {
+        println!("Message handler called. {}", msg);
+        Ok(())
+      }
+    }) {
+      // Inform the user of failure
+      println!("Failed to create WebSocket due to: {:?}", error);
+    }
   }
 }

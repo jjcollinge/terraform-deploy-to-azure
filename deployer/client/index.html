@@ -7,7 +7,7 @@
         function connect() {
             ws = new WebSocket("ws://localhost:3013/service")
             ws.onopen = function () {
-                ws.send("start"); // I WANT TO SEND THIS MESSAGE TO THE SERVER!!!!!!!!
+                console.log("connected")
             };
 
             ws.onmessage = function (evt) {
@@ -19,12 +19,7 @@
             };
         };
         function accept() {
-            ws.send("yes\r\n");
-            // ws.send("\r");
-            // ws.send("\r\n");
-            // ws.send("\n");
-            // ws.send("\u23CE");
-            // ws.send("\u{23ce}");
+            ws.send("yes\n");
         }
 
     </script>
@@ -35,3 +30,5 @@
     <a href="#" onclick="accept();">Accept</a></div>
 </body>
 </html>
+
+
