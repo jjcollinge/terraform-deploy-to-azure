@@ -25,17 +25,21 @@
 
             let stringData = "Test data";
             let data = new TextEncoder(encoding).encode(stringData);
+
             let encrypted = await encryptBody(data, keys.aesKey);
+
+            let signature = await signHMAC(encrypted.body, keys.hmacKey);
+            encrypted.signature = signature;
+            console.log(1)
+            console.log(encrypted.signature);
+            console.log(2)
 
             console.log(encrypted)
 
-            let toDecryptsBase = Array8FromBase64(encrypted.body);
-            console.log(toDecryptsBase)
-
-            let iv = Array8FromBase64(encrypted.iv)
-            console.log(iv)
-
-            let decrypted = await decryptBody(toDecryptsBase, keys.aesKey, Array8FromBase64(encrypted.iv));
+            if (!validateHMAC(encrypted.signature, encrypted.body, keys.hmacKey)) {
+                throw "failed validation"
+            }
+            let decrypted = await decryptBody((encrypted.body), keys.aesKey, (encrypted.iv));
 
             let dataLooped = new TextDecoder(encoding).decode(decrypted);
 
@@ -102,22 +106,22 @@
             return await window.crypto.subtle.decrypt(
                 {
                     name: "AES-CTR",
-                    counter: iv,
+                    counter: Array8FromBase64(iv),
                     length: 128,
                 },
                 key, //from generateKey or importKey above
-                data //ArrayBuffer of the data
+                Array8FromBase64(data) //ArrayBuffer of the data
             )
         }
 
-        function hmacBody() {
-            res1 = CryptoJS.HmacSHA256("test", key).digest();
-            res2 = CryptoJS.HmacSHA256("test", key).digest();
-            console.log(res1);
-            console.log(res2);
-            if (res1 !== res2) {
-                throw "It went wrong different results"
-            }
+        async function signHMAC(data, key) {
+            return encode8to64(await window.crypto.subtle.sign(
+                {
+                    name: "HMAC",
+                },
+                key, //from generateKey or importKey above
+                Array8FromBase64(data) //ArrayBuffer of data you want to sign
+            ))
         }
 
         async function validateHMAC(signature, data, key) {
@@ -126,8 +130,8 @@
                     name: "HMAC",
                 },
                 key, //from generateKey or importKey above
-                signature, //ArrayBuffer of the signature
-                data //ArrayBuffer of the data
+                Array8FromBase64(signature), //ArrayBuffer of the signature
+                Array8FromBase64(data) //ArrayBuffer of the data
             )
         }
 
@@ -174,24 +178,10 @@
             return btoa(new Uint8Array(buff).reduce((s, b) => s + String.fromCharCode(b), ''));
         }
 
-        function encode16to64(buff) {
-            return btoa(new Uint16Array(buff).reduce((s, b) => s + String.fromCharCode(b), ''));
-        }
-
         function Array8FromBase64(base64) {
             var binary_string = window.atob(base64);
             var len = binary_string.length;
             var bytes = new Uint8Array(len);
-            for (var i = 0; i < len; i++) {
-                bytes[i] = binary_string.charCodeAt(i);
-            }
-            return bytes;
-        }
-
-        function Array16FromBase64(base64) {
-            var binary_string = window.atob(base64);
-            var len = binary_string.length;
-            var bytes = new Uint16Array(len);
             for (var i = 0; i < len; i++) {
                 bytes[i] = binary_string.charCodeAt(i);
             }
