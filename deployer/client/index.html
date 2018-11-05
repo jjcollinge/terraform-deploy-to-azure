@@ -1,6 +1,4 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" 
-    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml">
+<!doctype html>
 <!-- 
 // Notes:
 // Ordering = Encrypt then MAC https://crypto.stackexchange.com/questions/202/should-we-mac-then-encrypt-or-encrypt-then-mac
@@ -12,6 +10,9 @@
 <script src="base64js.min.js"></script>
 
 <head>
+    <link rel="stylesheet" href="node_modules/xterm/dist/xterm.css" />
+    <script src="node_modules/xterm/dist/xterm.js"></script>
+    <script src="node_modules/xterm/dist/addons/fit/fit.js"></script>
     <script type="text/javascript">
         var ws = "";
         var encoding = 'utf-8'
@@ -19,9 +20,6 @@
         var decoder = new TextDecoder(encoding)
 
         generateKeys().then(async keys => {
-            // Todo: Remove logging keys to console
-            console.log(keys)
-            console.log(keys.aesKeyExport.toString())
 
             let stringData = "Test data";
             let data = new TextEncoder(encoding).encode(stringData);
@@ -30,11 +28,6 @@
 
             let signature = await signHMAC(encrypted.body, keys.hmacKey);
             encrypted.signature = signature;
-            console.log(1)
-            console.log(encrypted.signature);
-            console.log(2)
-
-            console.log(encrypted)
 
             if (!validateHMAC(encrypted.signature, encrypted.body, keys.hmacKey)) {
                 throw "failed validation"
@@ -45,8 +38,6 @@
 
             console.log(stringData);
             console.log(dataLooped);
-            // decryptBody();
-            // hmacBody();
         }).catch(e => {
             console.log(e);
         });
@@ -60,7 +51,7 @@
             };
 
             ws.onmessage = function (evt) {
-                console.log(evt.data)
+                term.writeln(evt.data)
                 // var received_msg = evt.data;
             };
             ws.onclose = function () {
@@ -70,9 +61,6 @@
         function accept() {
             ws.send("yes\n");
         }
-
-
-
 
         // Simple function to encrypt a message body
         async function encryptBody(data, key) {
@@ -191,10 +179,19 @@
     </script>
 </head>
 
-<body style="font-size:xx-large">
+<body style="font-size:x-large">
     <div>
         <a href="#" onclick="connect();">Click here to start</a></div>
     <a href="#" onclick="accept();">Accept</a></div>
+    <div id="terminal"></div>
+    <script>
+        Terminal.applyAddon(fit);
+
+        var term = new Terminal();
+        term.open(document.getElementById('terminal'));
+        term.write('Welcome to \x1B[1;3;31mTerraform Deploy to Azure\x1B[0m $ ')
+        term.fit();  
+    </script>
 </body>
 
 </html>
