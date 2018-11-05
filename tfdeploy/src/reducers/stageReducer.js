@@ -6,12 +6,12 @@ export default function userReducer(state = '', action) {
             if (state.stage === 2) {
                 return state
             }
-            return Object.assign({}, state, { stage: state.stage + 1 });
+            return state + 1
         case DECREMENT_STAGE:
             if (state.stage === -1) {
                 return state
             }
-            return Object.assign({}, state, { stage: state.stage - 1 });
+            return state - 1
         default:
             return state
     }
