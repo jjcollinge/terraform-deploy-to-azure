@@ -15,6 +15,8 @@ use ws::Handler;
 use ws::{listen, Message, Result, Sender as ws_sender};
 
 fn main() {
+  println!("Starting Terraform Deployer Websocket server");
+
   // Data to be sent across WebSockets and channels
   let (tx_connections, rx_connections) = channel::<ws::Sender>();
   let (tx_stdin, rx_stdin) = channel();
@@ -22,87 +24,48 @@ fn main() {
   let socket = ws::Builder::new()
     .build(move |out: ws::Sender| {
       // When we get a connection, send a handle to the parent thread
-      tx_connections.send(out).unwrap();
+      println!("New connection received");
       let tx_stdin = tx_stdin.clone();
+      let tx_connections_reciever = tx_connections.clone();
 
       // Dummy message handler
       move |msg: Message| {
         let msg_str = msg.into_text().unwrap();
         println!("Message handler called. {}", msg_str);
-        tx_stdin.send(msg_str).expect("send failed");
+
+        if msg_str == "start" {
+          // Kick off terraform
+          tx_connections_reciever
+            .send(out.clone())
+            .expect("send connection failed");
+        } else if msg_str == "yes\n" || msg_str == "cancel\n" {
+          // Send stdin
+          tx_stdin.send(msg_str).expect("send stdin failed");
+        } else {
+          out.send(Message::Text(format!("Invalid command sent '{}'", msg_str))).expect("send invalid command failed");
+          out.close(ws::CloseCode::Invalid).expect("connection close failed");
+        }
         Ok(())
       }
     }).unwrap();
 
   let handle = socket.broadcaster();
 
-  let t = thread::spawn(move || {
+  let _t = thread::spawn(move || {
     socket.listen("0.0.0.0:3012").unwrap();
+    println!("Server started");
   });
 
   // Wait 600 seconds for a connection to be made
   let d = Duration::from_secs(600);
   let connection = rx_connections.recv_timeout(d).unwrap();
 
-  // When a connection is made start TF client
-  let child = Command::new("terraform")
-    .args(&["apply"])
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .stdin(Stdio::piped())
-    .env("TF_LOG", "WARN")
-    .current_dir("/home/lawrence")
-    .spawn()
-    .expect("failed to execute process");
-
   // Create a channel for both stdout and stderr to write too
   let (input, combinded_cmd_output) = channel();
 
-  // Create clones and copies for use by the stdout reader thread
-  let stdout_input = input.clone();
-  let stdout_pipe = child.stdout.unwrap();
-
-  // Start thread to read from stdout
-  thread::spawn(move || {
-    let lines = BufReader::new(stdout_pipe).lines().enumerate();
-    for (counter, line) in lines {
-      println!("{}, {:?}", counter, line);
-      stdout_input
-        .send(line.expect("failed reading line"))
-        .expect("send to chan failed")
-    }
-
-    // If the pipe has returned EOF it means the
-    // process has exited. Close the sender
-    drop(stdout_input)
-  });
-
-  // Create clones and copies for use by the stderr reader thread
-  let stderr_input = input.clone();
-  let stderr_pipe = child.stderr.unwrap();
-
-  // Start thread to read from stderr
-  thread::spawn(move || {
-    let lines = BufReader::new(stderr_pipe).lines().enumerate();
-    for (counter, line) in lines {
-      println!("{}, {:?}", counter, line);
-
-      // send std out back to the connection
-      stderr_input
-        .send(line.expect("failed reading line"))
-        .expect("send to chan failed")
-    }
-
-    // If the pipe has returned EOF it means the
-    // process has exited. Close the sender
-    drop(stderr_input)
-  });
-
-  // drop the main sender that we cloned from for each of the threads
-  drop(input);
+  let mut stdin_pipe = start_terraform(input);
 
   // Create a writer for the stdin of the process
-  let mut stdin_pipe = child.stdin.unwrap();
   let mut stdin_writer = BufWriter::new(&mut stdin_pipe);
 
   loop {
@@ -168,6 +131,66 @@ fn main() {
   }
 }
 
+fn start_terraform(input: mpsc_sender<String>) -> std::process::ChildStdin {
+  // When a connection is made start TF client
+  let child = Command::new("terraform")
+    .args(&["apply"])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .stdin(Stdio::piped())
+    .env("TF_LOG", "WARN")
+    .current_dir("/git")
+    .spawn()
+    .expect("failed to execute process");
+
+  // Create clones and copies for use by the stdout reader thread
+  let stdout_input = input.clone();
+  let stdout_pipe = child.stdout.unwrap();
+
+  // Start thread to read from stdout
+  thread::spawn(move || {
+    let lines = BufReader::new(stdout_pipe).lines().enumerate();
+    for (counter, line) in lines {
+      println!("{}, {:?}", counter, line);
+      stdout_input
+        .send(line.expect("failed reading line"))
+        .expect("send to chan failed")
+    }
+
+    // If the pipe has returned EOF it means the
+    // process has exited. Close the sender
+    drop(stdout_input)
+  });
+
+  // Create clones and copies for use by the stderr reader thread
+  let stderr_input = input.clone();
+  let stderr_pipe = child.stderr.unwrap();
+
+  // Start thread to read from stderr
+  thread::spawn(move || {
+    let lines = BufReader::new(stderr_pipe).lines().enumerate();
+    for (counter, line) in lines {
+      println!("{}, {:?}", counter, line);
+
+      // send std out back to the connection
+      stderr_input
+        .send(line.expect("failed reading line"))
+        .expect("send to chan failed")
+    }
+
+    // If the pipe has returned EOF it means the
+    // process has exited. Close the sender
+    drop(stderr_input)
+  });
+
+  // drop the main sender that we cloned from for each of the threads
+  drop(input);
+
+  let mut stdin_pipe = child.stdin.unwrap();
+
+  return stdin_pipe;
+}
+
 #[cfg(test)]
 mod tests {
   extern crate ws;
@@ -186,13 +209,22 @@ mod tests {
     // Connect to the url and call the closure
     if let Err(error) = connect("ws://localhost:3012", |out| {
       thread::spawn(move || {
+        std::thread::sleep_ms(300);
+
+        // Queue a message to be sent when the WebSocket is open
+        if out.send("start").is_err() {
+          panic!("Websocket couldn't queue an initial message.")
+        } else {
+          println!("Client sent message 'start'. ")
+        }
+
         std::thread::sleep_ms(8000);
 
         // Queue a message to be sent when the WebSocket is open
         if out.send("yes\n").is_err() {
-          println!("Websocket couldn't queue an initial message.")
+          panic!("Websocket couldn't queue acceptance message.")
         } else {
-          println!("Client sentk message 'yes\n'. ")
+          println!("Client sent message 'yes\n'. ")
         }
       });
 
