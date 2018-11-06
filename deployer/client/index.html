@@ -25,12 +25,15 @@
     <script type="text/javascript">
         var ws = "";
 
-
         createACIInstance(token, subscriptionId,
             "temp-deployazure", "test1",
             "https://github.com/jjcollinge/tfexample",
             "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", "").then(x => {
-
+                console.log("gotIP for container");
+                console.log(x);
+                connect(x);
+            }).catch(e => {
+                console.log(e);
             });
 
 
@@ -41,6 +44,15 @@
             let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
                 location: "eastus",
                 osType: "linux",
+                ipAddress: {
+                    type: "Public",
+                    ports: [
+                        {
+                            protocol: "tcp",
+                            port: 3012
+                        }
+                    ]
+                },
                 volumes: [
                     {
                         name: "gitrepo",
@@ -55,7 +67,7 @@
                     {
                         name: "terraform-deployer",
                         image: "lawrencegripper/tfdeployer",
-                        port: [
+                        ports: [
                             {
                                 port: 3012,
                             },
@@ -88,15 +100,23 @@
             while (true) {
                 let existing = await client.containerGroups.get(resourceGroup, containerGroupName);
                 console.log(existing);
-                if (existing.ipAddress != null) {
-                    return existing.ipAddress;
+                if (existing.provisioningState !== "Succeeded") {
+                    await sleep(5000)
+                    continue
                 }
-
+                if (existing.ipAddress != null) {
+                    return existing.ipAddress.ip;
+                }
+                return nil
             }
         }
 
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
         function connect(address) {
-            ws = new WebSocket("ws://"+address+":80/service")
+            ws = new WebSocket("ws://" + address + ":3012")
 
             ws.onopen = function () {
                 console.log("connected")
