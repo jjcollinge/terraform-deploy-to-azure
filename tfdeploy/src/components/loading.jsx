@@ -18,24 +18,77 @@ const sleep = async (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const loadVariables = (props) => {
-    props.addVariable({
-        name: "Subscription",
-        type: TEXT_FIELD,
-    })
-
-    props.addVariable({
-        name: "Resource Group",
-        type: TEXT_FIELD,
-    })
-}
-
 const bin2string = (array) => {
     var result = "";
     for (var i = 0; i < array.length; ++i) {
         result += (String.fromCharCode(array[i]));
     }
     return result;
+}
+
+const cloneRepo = async (w, dir) => {
+    console.log("making dir")
+    await w.pfs.mkdir(dir)
+
+    console.log("starting clone")
+    await w.git.clone({
+        dir,
+        corsProxy: 'https://cors.isomorphic-git.org',
+        url: 'https://github.com/jjcollinge/tfexample',
+        ref: 'master',
+        singleBranch: true,
+        depth: 1,
+    });
+    console.log("finished clone")
+}
+
+const extractHCLFiles = async (w, dir) => {
+    let files = await w.pfs.readdir(dir);
+    console.log(files)
+    let hclFiles = [];
+    files.forEach(file => {
+        let ext = re.exec(file);
+        if (ext === undefined) {
+            return;
+        }
+        if (ext[1] === "tf") {
+            hclFiles.push(file);
+        }
+    });
+    if (hclFiles.length < 1) {
+        console.error("No Terraform HCL files provided in repo root!")
+    }
+    console.log(hclFiles)
+    return hclFiles
+}
+
+const mergeHCLFiles = async (w, dir, hclFiles, outputFile) => {
+    await w.pfs.writeFile(outputFile, '')
+    console.log("created merge file")
+    hclFiles.forEach(async file => {
+        let filePath = dir + '/' + file // check if this is always work in BrowserFS
+        console.log(`merging file ${filePath}`)
+        let buf = await w.pfs.readFile(filePath)
+        console.log(`read file ${filePath}`)
+        await w.pfs.appendFile(outputFile, buf)
+        console.log(`merged ${filePath} in ${outputFile}`)
+    });
+}
+
+const convertHCLtoJSON = async (w, props, hclFile) => {
+    console.log("reading merged file")
+    var buf = await w.pfs.readFile(hclFile)
+    let contents = bin2string(buf)
+    console.log(contents)
+    let jsonContent = hcltojson(contents)
+    console.log(jsonContent)
+    for (var prop in jsonContent.variable) {
+        console.log(prop)
+        props.addVariable({
+            name: prop,
+            type: TEXT_FIELD,
+        });
+    };
 }
 
 class Loading extends Component {
@@ -61,101 +114,44 @@ class Loading extends Component {
         const w = window;
 
         // Sleep long enough for PFS to become created
-        sleep(100).then(async () => {
-            console.log("making dir")
-            await w.pfs.mkdir(dir)
+        await sleep(100)
 
-            console.log("starting clone")
-            await w.git.clone({
-                dir,
-                corsProxy: 'https://cors.isomorphic-git.org',
-                url: 'https://github.com/jjcollinge/tfexample',
-                ref: 'master',
-                singleBranch: true,
-                depth: 1,
-            });
-            console.log("finished clone")
-
-            let files = await w.pfs.readdir(dir);
-            console.log(files)
-            let terraformFiles = [];
-            files.forEach(file => {
-                let ext = re.exec(file);
-                if (ext === undefined) {
-                    return;
-                }
-                if (ext[1] === "tf") {
-                    terraformFiles.push(file);
-                }
-            });
-            if (terraformFiles.length < 1) {
-                console.error("No Terraform files provided in repo root!")
-            }
-            console.log(terraformFiles)
-
+        try {
+            await cloneRepo(w, dir)
+            let hclFiles = await extractHCLFiles(w, dir)
             let mergedFile = 'merged.tf'
-            await w.pfs.writeFile(mergedFile, '', (err) => {
-                if (err) {
-                    console.error(err)
-                }
-                console.log("created merge file")
-                terraformFiles.forEach(file => {
-                    let filePath = dir + '/' + file // check if this is always work in BrowserFS
-                    console.log(`merging file ${filePath}`)
-                    w.pfs.readFile(filePath, (err, buf) => {
-                        if (err) throw err;
-                        console.log(`read file ${filePath}`)
-                        w.pfs.appendFile(mergedFile, buf, (err) => {
-                            if (err) {
-                                throw err;
-                            }
-                            console.log(`merged ${filePath} in ${mergedFile}`)
-                        });
-                    });
-                });
+            await mergeHCLFiles(w, dir, hclFiles, mergedFile)
+            await convertHCLtoJSON(w, this.props, mergedFile)
 
-                console.log("reading merged file")
-                w.pfs.readFile(mergedFile, (err, buf) => {
-                    if (err) throw err;
-                    let contents = bin2string(buf)
-                    console.log(contents)
-                    let jsonContent = hcltojson(contents)
-                    console.log(jsonContent)
-                    for (var prop in jsonContent.variable) {
-                        console.log(prop)
-                        this.props.addVariable({
-                            name: prop,
-                            type: TEXT_FIELD,
-                        });
-                    };
-                    this.props.incrementStage();
-                });
-            });
-        });
+            // TODO: Fetch available values
+        } catch (err) {
+            console.error(err) // TODO: Handle errors
+        }
+        this.props.incrementStage();
     }
 
-componentWillUnmount() {
-    clearInterval(this.interval);
-}
+    componentWillUnmount() {
+        clearInterval(this.interval);
+    }
 
-render() {
-    return (
-        <Grid
-            container
-            direction="column"
-            justify="center"
-            alignItems="center"
-            className="placeholder"
-            style={this.props.showLoading ? {} : hide}>
-            <Grid item xs={4} className="placeholder-text">
-                {this.state.text + ".".repeat(this.state.numDots + 1)}
+    render() {
+        return (
+            <Grid
+                container
+                direction="column"
+                justify="center"
+                alignItems="center"
+                className="placeholder"
+                style={this.props.showLoading ? {} : hide}>
+                <Grid item xs={4} className="placeholder-text">
+                    {this.state.text + ".".repeat(this.state.numDots + 1)}
+                </Grid>
+                <Grid item xs={4}>
+                    <img src={logo} className="placeholder-logo" alt="logo" />
+                </Grid>
             </Grid>
-            <Grid item xs={4}>
-                <img src={logo} className="placeholder-logo" alt="logo" />
-            </Grid>
-        </Grid>
-    );
-}
+        );
+    }
 }
 
 const mapStateToProps = state => {
