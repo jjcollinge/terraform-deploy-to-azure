@@ -28,18 +28,23 @@
         function start() {
             term.writeln("");
             term.write("Starting ACI Container for deployment");
-            let t = setInterval(function(){
+            let t = setInterval(function () {
                 term.write(".")
             }, 300);
 
             createACIInstance(token, subscriptionId,
-                "temp-deployazure", "test20",
+                "temp-deployazure", "test21",
                 "https://github.com/jjcollinge/tfexample",
                 "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", "").then(async x => {
                     term.write("\r\nContainer started");
                     await sleep(10000)
                     term.write("\r\nConnecting to Websocket server @ " + x);
-                    connect(x);
+                    try {
+                        await connect(x);
+                    } catch (e) {
+                        // retry
+                        await connect(x);
+                    }
                     term.writeln("\r\nKicking off Terraform deployment");
                     clearInterval(t);
                 }).catch(e => {
@@ -72,7 +77,7 @@
                         gitRepo: {
                             repository: repoUrl,
                             revision: repoCommitHash,
-                            // directory: repoDir,
+                            directory: ".",
                         }
                     }
                 ],
@@ -148,31 +153,36 @@
         }
 
         function connect(address) {
-            ws = new WebSocket("ws://" + address + ":3012")
+            return new Promise(function (resolve, reject) {
+                ws = new WebSocket("ws://" + address + ":3012")
+                ws.onopen = function () {
 
-            ws.onopen = function () {
-                console.log("connected")
-                setInterval(function(){
-                    ws.send("start");
+                    console.log("connected")
+                    setInterval(function () {
+                        ws.send("start");
 
-                }, 1000)
-            };
+                    }, 1000)
+                    
+                    resolve("connected")
+                };
 
-            ws.onmessage = function (evt) {
-                term.writeln(evt.data)
-                // var received_msg = evt.data;
-            };
-            ws.onclose = function () {
-                term.writeln("Connection closed");
-                console.log("Connection is closed...");
-            };
-            ws.onerror = function (err) {
-                console.log(err);
-                term.writeln("Error connecting");
-            }
+                ws.onmessage = function (evt) {
+                    term.writeln(evt.data)
+                    // var received_msg = evt.data;
+                };
+                ws.onclose = function () {
+                    term.writeln("Connection closed");
+                    console.log("Connection is closed...");
+                    reject("Connection error")
+                };
+                ws.onerror = function (err) {
+                    console.log(err);
+                    term.writeln("Error connecting");
+                    reject("Connection error")
+                }
+            });
+        }
 
-
-        };
         function accept() {
             ws.send("yes\n");
         }
