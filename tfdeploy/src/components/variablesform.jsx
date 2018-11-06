@@ -69,7 +69,7 @@ class VariablesForm extends Component {
 
 const mapStateToProps = state => ({
     showVarForm: state.stage === 0,
-    variables: state.variables
+    variables: state.variables,
 });
 
 const mapDispatchToProps = dispatch => ({

@@ -6,3 +6,11 @@
     color: #ffffff;
     text-align: center;
 }
+
+.navbar-user {
+    color: #ffffff;
+    text-align: right;
+    margin-right: 5%;
+    margin-top: 2%;
+    font-weight: bold;
+}

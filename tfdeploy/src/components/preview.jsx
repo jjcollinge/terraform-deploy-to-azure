@@ -1,8 +1,11 @@
 import React, { Component } from 'react';
 import { Grid } from '@material-ui/core';
-import './preview.css';
 import { incrementStage } from '../actions/stageActions';
 import { connect } from 'react-redux';
+import { Terminal } from 'xterm';
+import * as fit from 'xterm/lib/addons/fit/fit';
+import style from 'xterm/dist/xterm.css';
+import './preview.css';
 
 const hide = {
     display: 'none'
@@ -14,19 +17,25 @@ const terminalStyle = {
 
 class Preview extends Component {
     state = {
-        output: "Loading..."
+        output: "Loading...",
+    }
+
+    componentDidUpdate() {
+        if (this.props.showPreview) {
+            let termElem = document.getElementById('terminal')
+            Terminal.applyAddon(fit);
+
+            let xterm = new Terminal({
+                useStyle: true,
+                cursorBlink: true,
+            });
+            xterm.open(termElem);
+            xterm.writeln("Ok, let's do this...");
+            xterm.fit();
+        }
     }
 
     render() {
-        console.log(this.props)
-
-        let vars = []
-        let i = 0
-        this.props.variables.forEach(element => {
-            vars.push(<div key={`var${i}`}>{element.name}={element.value}</div>);
-            i++;
-        });
-
         return (<Grid
             container
             direction="column"
@@ -39,9 +48,7 @@ class Preview extends Component {
                 item xs={12}
                 style={terminalStyle}
                 className="preview-terminal">
-                <div className="preview-terminal-text">
-                    {vars}
-                </div>
+                <div id='terminal'></div>
             </Grid>
         </Grid>
         )
@@ -50,7 +57,8 @@ class Preview extends Component {
 
 const mapStateToProps = state => ({
     showPreview: state.stage === 1,
-    variables: state.variables
+    variables: state.variables,
+    user: state.user,
 });
 
 const mapDispatchToProps = dispatch => ({

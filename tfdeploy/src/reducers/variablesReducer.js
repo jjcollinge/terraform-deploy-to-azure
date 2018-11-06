@@ -1,7 +1,7 @@
 import update from 'immutability-helper';
 import { ADD_VAR, SET_VAR } from '../actions/variablesActions';
 
-export default function varReducer(state = [], action) {
+export default function variablesReducer(state = [], action) {
     switch (action.type) {
         case ADD_VAR:
             return [

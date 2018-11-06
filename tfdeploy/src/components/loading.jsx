@@ -27,10 +27,7 @@ const bin2string = (array) => {
 }
 
 const cloneRepo = async (w, dir) => {
-    console.log("making dir")
     await w.pfs.mkdir(dir)
-
-    console.log("starting clone")
     await w.git.clone({
         dir,
         corsProxy: 'https://cors.isomorphic-git.org',
@@ -39,12 +36,10 @@ const cloneRepo = async (w, dir) => {
         singleBranch: true,
         depth: 1,
     });
-    console.log("finished clone")
 }
 
 const extractHCLFiles = async (w, dir) => {
     let files = await w.pfs.readdir(dir);
-    console.log(files)
     let hclFiles = [];
     files.forEach(file => {
         let ext = re.exec(file);
@@ -58,37 +53,48 @@ const extractHCLFiles = async (w, dir) => {
     if (hclFiles.length < 1) {
         console.error("No Terraform HCL files provided in repo root!")
     }
-    console.log(hclFiles)
     return hclFiles
 }
 
 const mergeHCLFiles = async (w, dir, hclFiles, outputFile) => {
     await w.pfs.writeFile(outputFile, '')
-    console.log("created merge file")
     hclFiles.forEach(async file => {
         let filePath = dir + '/' + file // check if this is always work in BrowserFS
-        console.log(`merging file ${filePath}`)
         let buf = await w.pfs.readFile(filePath)
-        console.log(`read file ${filePath}`)
         await w.pfs.appendFile(outputFile, buf)
-        console.log(`merged ${filePath} in ${outputFile}`)
     });
 }
 
 const convertHCLtoJSON = async (w, props, hclFile) => {
-    console.log("reading merged file")
     var buf = await w.pfs.readFile(hclFile)
     let contents = bin2string(buf)
-    console.log(contents)
     let jsonContent = hcltojson(contents)
-    console.log(jsonContent)
-    for (var prop in jsonContent.variable) {
-        console.log(prop)
+    return jsonContent
+}
+
+const setVariables = async (props, variables) => {
+    const keys = Object.keys(variables)
+    for (const key of keys) {
         props.addVariable({
-            name: prop,
+            name: key,
             type: TEXT_FIELD,
         });
     };
+}
+
+const addOptions = async (props) => {
+    console.log("Fetching with token")
+    console.log(props.user.token)
+    let subs = await fetch("https://management.azure.com/subscriptions", {
+        method: 'GET',
+        headers: new Headers({
+            'Authorization': 'Bearer ' + props.user.token,
+            'x-ms-version': '2013-08-01',
+            'Origin': 'localhost'
+        })
+    })
+    console.log("Subs")
+    console.log(subs)
 }
 
 class Loading extends Component {
@@ -117,13 +123,16 @@ class Loading extends Component {
         await sleep(100)
 
         try {
-            await cloneRepo(w, dir)
-            let hclFiles = await extractHCLFiles(w, dir)
             let mergedFile = 'merged.tf'
-            await mergeHCLFiles(w, dir, hclFiles, mergedFile)
-            await convertHCLtoJSON(w, this.props, mergedFile)
-
-            // TODO: Fetch available values
+            let mergedFileExists = await w.pfs.exists(mergedFile)
+            if (!mergedFileExists) {
+                await cloneRepo(w, dir)
+                let hclFiles = await extractHCLFiles(w, dir)
+                await mergeHCLFiles(w, dir, hclFiles, mergedFile)
+                let json = await convertHCLtoJSON(w, this.props, mergedFile)
+                //await addOptions(this.props)
+                await setVariables(this.props, json.variable)
+            }
         } catch (err) {
             console.error(err) // TODO: Handle errors
         }
@@ -157,6 +166,7 @@ class Loading extends Component {
 const mapStateToProps = state => {
     return {
         showLoading: state.stage === -1,
+        user: state.user,
     }
 };
 
