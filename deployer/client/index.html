@@ -33,9 +33,9 @@
             }, 300);
 
             createACIInstance(token, subscriptionId,
-                "temp-deployazure", "test21",
+                "temp-deployazure", "test22",
                 "https://github.com/jjcollinge/tfexample",
-                "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", "").then(async x => {
+                "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa").then(async x => {
                     term.write("\r\nContainer started");
                     await sleep(10000)
                     term.write("\r\nConnecting to Websocket server @ " + x);
@@ -54,7 +54,7 @@
         }
 
 
-        async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, repoDir) {
+        async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash) {
             const creds = new msRest.TokenCredentials(token);
             const client = new Azure.ArmContainerinstance.ContainerInstanceManagementClient(creds, subscriptionId);
 

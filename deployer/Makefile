@@ -8,3 +8,4 @@ build:
 
 docker-build:
 	docker build -t lawrencegripper/tfdeployer .
+	docker push lawrencegripper/tfdeployer
