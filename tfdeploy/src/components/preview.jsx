@@ -6,6 +6,8 @@ import { Terminal } from 'xterm';
 import * as fit from 'xterm/lib/addons/fit/fit';
 import style from 'xterm/dist/xterm.css';
 import './preview.css';
+import * as WebfontLoader from 'xterm-webfont'
+import chalk from 'chalk';
 
 const hide = {
     display: 'none'
@@ -15,23 +17,42 @@ const terminalStyle = {
     margin: "3% 0"
 }
 
+let options = {enabled: true, level: 2};
+const forcedChalk = new chalk.constructor(options);
+
 class Preview extends Component {
     state = {
         output: "Loading...",
+        xterm: {},
     }
 
-    componentDidUpdate() {
+    async componentDidUpdate() {
         if (this.props.showPreview) {
             let termElem = document.getElementById('terminal')
             Terminal.applyAddon(fit);
+            Terminal.applyAddon(WebfontLoader);
 
             let xterm = new Terminal({
                 useStyle: true,
                 cursorBlink: true,
+                fontFamily: 'Roboto Mono',
+                fontSize: 18,
+                fontWeight: 500,
+                fontWeightBold: 500,
             });
-            xterm.open(termElem);
-            xterm.writeln("Ok, let's do this...");
+            await xterm.loadWebfontAndOpen(termElem);
+            xterm.writeln(forcedChalk.greenBright("Terraform Deploy to Azure\n\n"));
+            xterm.writeln("Variables:");
+            xterm.writeln("- - - - - - - - - - - - - -")
+            console.log(this.props.variables)
+            this.props.variables.forEach(variable => {
+                console.log(variable)
+                xterm.writeln(`${variable.name} = ${variable.value ? variable.value : '""'}`)
+            })
+            xterm.writeln("- - - - - - - - - - - - - -")
             xterm.fit();
+
+            this.state.xterm = xterm;
         }
     }
 
