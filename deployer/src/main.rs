@@ -37,7 +37,7 @@ fn main() {
   let handle = socket.broadcaster();
 
   let t = thread::spawn(move || {
-    socket.listen("127.0.0.1:3013").unwrap();
+    socket.listen("0.0.0.0:3012").unwrap();
   });
 
   // Wait 600 seconds for a connection to be made
@@ -51,7 +51,7 @@ fn main() {
     .stderr(Stdio::piped())
     .stdin(Stdio::piped())
     .env("TF_LOG", "WARN")
-    .current_dir("/home/lawrence/go/src/github.com/terraform-providers/terraform-provider-kubernetes/_examples/yaml")
+    .current_dir("/home/lawrence")
     .spawn()
     .expect("failed to execute process");
 
@@ -184,7 +184,7 @@ mod tests {
     let t = thread::spawn(move || main());
 
     // Connect to the url and call the closure
-    if let Err(error) = connect("ws://127.0.0.1:3013", |out| {
+    if let Err(error) = connect("ws://localhost:3012", |out| {
       thread::spawn(move || {
         std::thread::sleep_ms(8000);
 

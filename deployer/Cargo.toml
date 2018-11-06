@@ -5,5 +5,3 @@ authors = ["Lawrence Gripper <info@grippers.co.uk>"]
 
 [dependencies]
 ws = { version = "*"}
-duct = "0.11.1"
-scoped_threadpool = { version = "*"}

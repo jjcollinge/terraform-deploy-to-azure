@@ -20,30 +20,30 @@
     <script src="node_modules/ms-rest-azure-js/dist/msRestAzure.js"></script>
     <script src="node_modules/ms-rest-browserauth/dist/msAuth.js"></script>
     <script src="azure-containerinstance/dist/arm-containerinstance.js"></script>
+    <script src="creds.private.js"></script>
 
     <script type="text/javascript">
         var ws = "";
 
 
+        createACIInstance(token, subscriptionId,
+            "temp-deployazure", "test1",
+            "https://github.com/jjcollinge/tfexample",
+            "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", "").then(x => {
 
-        createACIInstance(token, subscriptionId, "temp-deployazure", "test1", "https://github.com/jjcollinge/tfexample", "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", "");
+            });
+
+
         async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, repoDir) {
             const creds = new msRest.TokenCredentials(token);
             const client = new Azure.ArmContainerinstance.ContainerInstanceManagementClient(creds, subscriptionId);
 
-            // let existing = await client.containerGroups.get(resourceGroup, containerGroupName);
-            // if (existing.provisioningState != null) {
-            //     return 
-            // }
-
-            // client.containerGroups.beginCreateOrUpdate()
-            // let existingContainers = await client.containerGroups.list()
             let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
                 location: "eastus",
                 osType: "linux",
                 volumes: [
                     {
-                        name:"gitrepo",
+                        name: "gitrepo",
                         gitRepo: {
                             repository: repoUrl,
                             revision: repoCommitHash,
@@ -54,10 +54,10 @@
                 containers: [
                     {
                         name: "terraform-deployer",
-                        image: "lawrencegripper/deployer",
+                        image: "lawrencegripper/tfdeployer",
                         port: [
                             {
-                                port: 80,
+                                port: 3012,
                             },
                         ],
                         environmentVariables: [
@@ -73,7 +73,7 @@
                         volumeMounts: [
                             {
                                 name: "gitrepo",
-                                mountPath: "/git"   
+                                mountPath: "/git"
                             }
                         ],
                         resources: {
@@ -84,10 +84,19 @@
                         }
                     }],
             })
+
+            while (true) {
+                let existing = await client.containerGroups.get(resourceGroup, containerGroupName);
+                console.log(existing);
+                if (existing.ipAddress != null) {
+                    return existing.ipAddress;
+                }
+
+            }
         }
 
-        function connect() {
-            ws = new WebSocket("ws://localhost:3013/service")
+        function connect(address) {
+            ws = new WebSocket("ws://"+address+":80/service")
 
             ws.onopen = function () {
                 console.log("connected")
