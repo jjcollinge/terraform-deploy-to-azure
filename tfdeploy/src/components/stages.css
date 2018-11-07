@@ -1,0 +1,46 @@
+.stage-box {
+    border-radius:5px;
+    width:75px;
+    height:75px;
+    margin: auto;
+    text-align: center;
+    color: #ffffff;
+}
+
+.stage-index {
+    position: relative;
+    top: 50%;
+    -webkit-transform: translateY(-50%);
+    -ms-transform: translateY(-50%);
+    transform: translateY(-50%);
+}
+
+.stage-title {
+    padding-top: 10px;
+    text-align: center;
+    color: #ffffff;
+}
+
+.stage-active {
+    background-color: #00B050;
+}
+
+.stage-inactive {
+    background-color: #4E42C3;
+}
+
+.stage-list {
+    list-style-type: none;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    width: 400px;
+    margin: auto;
+    padding: 20px 0;
+}
+
+.stage-list li {
+    width: 75px;
+    width: 75px;
+    margin: auto;
+}

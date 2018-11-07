@@ -1,0 +1,11 @@
+.placeholder-text {
+    padding-top: 4%;
+    font-size: calc(10px + 2vmin);
+    color: white;
+}
+
+.placeholder-logo {
+    margin: 50% 0;
+    height: 100px;
+    widows: 100px;
+}
