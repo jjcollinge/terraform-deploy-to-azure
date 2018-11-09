@@ -24,6 +24,17 @@
     <script src="https://isomorphic-git.org/js/pify.js"></script>
     <script src="https://unpkg.com/isomorphic-git"></script>
     <script>
+    // Set the original referrer if one is passed.
+    // Ignore self links and redirects.
+    // If no referrer is passed the user will be
+    // prompted to enter the URL manually.
+    let ref = localStorage.getItem('referrer')
+    let selfRef = document.referrer.includes(window.location)
+    let loginRedirect = document.referrer.includes("login.microsoftonline.com")
+    if (!ref && !selfRef && !loginRedirect) {
+      localStorage.setItem('referrer', document.referrer);
+    }
+
     let fsOptions = {
       fs: 'InMemory',
       options: {}

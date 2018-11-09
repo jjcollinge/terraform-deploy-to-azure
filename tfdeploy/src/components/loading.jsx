@@ -10,14 +10,6 @@ import hcltojson from 'hcl-to-json';
 
 const re = /(?:\.([^.]+))?$/;
 
-const hide = {
-    display: 'none'
-}
-
-const sleep = async (ms) => {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 const bin2string = (array) => {
     var result = "";
     for (var i = 0; i < array.length; ++i) {
@@ -26,12 +18,12 @@ const bin2string = (array) => {
     return result;
 }
 
-const cloneRepo = async (w, dir) => {
+const cloneRepo = async (w, url, dir) => {
     await w.pfs.mkdir(dir)
     await w.git.clone({
         dir,
         corsProxy: 'https://cors.isomorphic-git.org',
-        url: 'https://github.com/jjcollinge/tfexample',
+        url: url,
         ref: 'master',
         singleBranch: true,
         depth: 1,
@@ -101,6 +93,8 @@ class Loading extends Component {
     state = {
         text: "Loading",
         numDots: 1,
+        hasClonedGit: false,
+        isCloningGit: false,
     };
 
     tick = this.tick.bind(this);
@@ -115,28 +109,52 @@ class Loading extends Component {
         this.interval = setInterval(() => this.tick(), 400);
     }
 
-    async componentDidMount() {
+    async componentDidUpdate() {
         let dir = "repo"
         const w = window;
-
-        // Sleep long enough for PFS to become created
-        await sleep(100)
-
+        if (!w.pfs) {
+            console.log("PFS not ready")
+            return
+        }
+        if (this.props.git.url === undefined) {
+            console.log("git info is not set")
+            return
+        }
+        if (this.state.isCloningGit) {
+            console.log("already cloning git")
+            return
+        }
+        if (this.state.hasClonedGit) {
+            console.log("has cloned git")
+            return
+        }
         try {
-            let mergedFile = 'merged.tf'
-            let mergedFileExists = await w.pfs.exists(mergedFile)
-            if (!mergedFileExists) {
-                await cloneRepo(w, dir)
-                let hclFiles = await extractHCLFiles(w, dir)
-                await mergeHCLFiles(w, dir, hclFiles, mergedFile)
-                let json = await convertHCLtoJSON(w, this.props, mergedFile)
-                //await addOptions(this.props)
-                await setVariables(this.props, json.variable)
-            }
+            this.setState({ isCloningGit: true }, async () => {
+                let mergedFile = 'merged.tf'
+                let mergedFileExists = await w.pfs.exists(mergedFile)
+                if (!mergedFileExists) {
+                    console.log("cloning git repo")
+                    await cloneRepo(w, this.props.git.url, dir)
+                    console.log("extracting hcl")
+                    let hclFiles = await extractHCLFiles(w, dir)
+                    console.log("merging hcl")
+                    await mergeHCLFiles(w, dir, hclFiles, mergedFile)
+                    console.log("convert hcl to json")
+                    let json = await convertHCLtoJSON(w, this.props, mergedFile)
+                    //await addOptions(this.props)
+                    console.log("setting variables")
+                    await setVariables(this.props, json.variable)
+                    var _this = this;
+                    this.setState({ hasClonedGit: true }, () => {
+                        console.log("incrementing stage")
+                        _this.props.incrementStage();
+                        _this.componentWillUnmount();
+                    });
+                }
+            });
         } catch (err) {
             console.error(err) // TODO: Handle errors
         }
-        this.props.incrementStage();
     }
 
     componentWillUnmount() {
@@ -150,8 +168,7 @@ class Loading extends Component {
                 direction="column"
                 justify="center"
                 alignItems="center"
-                className="placeholder"
-                style={this.props.showLoading ? {} : hide}>
+                className="placeholder">
                 <Grid item xs={4} className="placeholder-text">
                     {this.state.text + ".".repeat(this.state.numDots + 1)}
                 </Grid>
@@ -163,12 +180,10 @@ class Loading extends Component {
     }
 }
 
-const mapStateToProps = state => {
-    return {
-        showLoading: state.stage === -1,
-        user: state.user,
-    }
-};
+const mapStateToProps = state => ({
+    user: state.user,
+    git: state.git,
+});
 
 const mapDispatchToProps = dispatch => ({
     incrementStage: () => {

@@ -20,7 +20,6 @@ class VariablesForm extends Component {
                 this.props.setVariable(prop, values[prop])
             }
         }
-
         this.props.incrementStage();
     }
 
@@ -31,8 +30,7 @@ class VariablesForm extends Component {
                 direction="row"
                 justify="center"
                 alignItems="center"
-                className="variablesform"
-                style={this.props.showVarForm ? {} : hide}>
+                className="variablesform">
                 <form
                     onSubmit={this.props.handleSubmit(this.handlePlanSubmit)}
                     className="variablesform-form">
@@ -68,7 +66,6 @@ class VariablesForm extends Component {
 }
 
 const mapStateToProps = state => ({
-    showVarForm: state.stage === 0,
     variables: state.variables,
 });
 

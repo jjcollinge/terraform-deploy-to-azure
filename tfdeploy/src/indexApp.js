@@ -11,6 +11,7 @@ import App from './components/App';
 import stageReducer from './reducers/stageReducer';
 import variablesReducer  from './reducers/variablesReducer';
 import userReducer from './reducers/userReducer';
+import gitReducer from './reducers/gitReducer';
 import './indexApp.css';
 import 'bootstrap/dist/css/bootstrap.css';
 
@@ -25,6 +26,7 @@ const allReducers = combineReducers({
     variables: variablesReducer,
     form: formReducer,
     user: userReducer,
+    git: gitReducer,
 })
 
 // TODO: async middleware
