@@ -5,22 +5,27 @@ use std::io::{BufRead, BufReader, BufWriter};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::Duration;
+use std::io::prelude::*;
+use std::fs::File;
+use std::{thread, time};
 
-use std::sync::mpsc::Receiver as mpsc_receiver;
 use std::sync::mpsc::Sender as mpsc_sender;
-use std::thread;
-use std::thread::sleep;
-use ws::CloseCode;
-use ws::Handler;
-use ws::{listen, Message, Result, Sender as ws_sender};
+use ws::{Message};
 
 fn main() {
   println!("Starting Terraform Deployer Websocket server");
+
+  // Worst case exist the container and cleanup the ACI instance after an hour
+  let _panic = thread::spawn(move || {
+    thread::sleep(time::Duration::from_secs(60 * 60));
+    panic!("timeout thread")
+  });
 
   // Data to be sent across WebSockets and channels
   let (tx_connections, rx_connections) = channel::<ws::Sender>();
   let (tx_stdin, rx_stdin) = channel();
 
+  // Build the websocket configuration
   let socket = ws::Builder::new()
     .build(move |out: ws::Sender| {
       // When we get a connection, send a handle to the parent thread
@@ -34,6 +39,8 @@ fn main() {
         println!("Message handler called. {}", msg_str);
 
         if msg_str == "start" {
+          println!("Sending connection to TF handler");
+
           // Kick off terraform
           tx_connections_reciever
             .send(out.clone())
@@ -42,23 +49,35 @@ fn main() {
           // Send stdin
           tx_stdin.send(msg_str).expect("send stdin failed");
         } else {
-          out.send(Message::Text(format!("Invalid command sent '{}'", msg_str))).expect("send invalid command failed");
-          out.close(ws::CloseCode::Invalid).expect("connection close failed");
+          out
+            .send(Message::Text(format!("Invalid command sent '{}'", msg_str)))
+            .expect("send invalid command failed");
+          out
+            .close(ws::CloseCode::Invalid)
+            .expect("connection close failed");
         }
         Ok(())
       }
     }).unwrap();
 
+  // Used for graceful shutdown
   let handle = socket.broadcaster();
 
+  // Start the server
   let _t = thread::spawn(move || {
     socket.listen("0.0.0.0:3012").unwrap();
     println!("Server started");
   });
 
+  // Write out a file for the readiness probe to check
+  File::create("ready.txt").expect("failed writing ready file");
+
   // Wait 600 seconds for a connection to be made
-  let d = Duration::from_secs(600);
+  let d = Duration::from_secs(900);
   let connection = rx_connections.recv_timeout(d).unwrap();
+
+  println!("Starting TF Deployment");
+
 
   // Create a channel for both stdout and stderr to write too
   let (input, combinded_cmd_output) = channel();
@@ -115,7 +134,7 @@ fn main() {
 
         // Shutdown the server and exit
         handle.shutdown().unwrap();
-        println!("Shutting down server because no connections were established.");
+        println!("Shutting down server because TF process exited.");
         return;
       }
       // This case handles when the process is still running but hasn't output any
@@ -127,7 +146,7 @@ fn main() {
     // Send the new line to the client over it's connection
     connection.send(Message::Text(cmd_output)).unwrap();
 
-    std::thread::sleep_ms(20);
+    thread::sleep(time::Duration::from_millis(20));
   }
 }
 
@@ -186,7 +205,7 @@ fn start_terraform(input: mpsc_sender<String>) -> std::process::ChildStdin {
   // drop the main sender that we cloned from for each of the threads
   drop(input);
 
-  let mut stdin_pipe = child.stdin.unwrap();
+  let stdin_pipe = child.stdin.unwrap();
 
   return stdin_pipe;
 }

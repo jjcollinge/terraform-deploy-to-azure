@@ -33,30 +33,56 @@
             }, 300);
 
             createACIInstance(token, subscriptionId,
-                "temp-deployazure", "test22",
+                "temp-deployazure", "test42",
                 "https://github.com/jjcollinge/tfexample",
-                "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa").then(async x => {
+                "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", [
+                    {
+                        name: "TF_VAR_azure_directory",
+                        secureValue: "example",
+                    }
+                ]).then(async x => {
                     term.write("\r\nContainer started");
-                    await sleep(10000)
+                    await sleep(12000)
                     term.write("\r\nConnecting to Websocket server @ " + x);
                     try {
                         await connect(x);
+                        term.writeln("\r\nKicking off Terraform deployment");
                     } catch (e) {
                         // retry
-                        await connect(x);
+                        term.write("\r\nConnection failed, retrying");
+                        try {
+                            await connect(x);
+                        } catch (e) {
+                            term.write("\r\nConnection failed");
+                        }
                     }
-                    term.writeln("\r\nKicking off Terraform deployment");
                     clearInterval(t);
                 }).catch(e => {
                     clearInterval(t);
+                    term.write("\r\n" + e.toString());
                     console.log(e);
                 });
         }
 
 
-        async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash) {
+        async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, tfvars) {
             const creds = new msRest.TokenCredentials(token);
             const client = new Azure.ArmContainerinstance.ContainerInstanceManagementClient(creds, subscriptionId);
+
+            let envs = [
+                {
+                    name: "AES_KEY",
+                    secureValue: ""
+                },
+                {
+                    name: "HMAC_KEY",
+                    secureValue: ""
+                }
+            ];
+            // Add additional vars
+            tfvars.forEach(function (x) {
+                envs.push(x)
+            });
 
             let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
                 location: "eastus",
@@ -92,7 +118,7 @@
                         },
                         readinessProbe: {
                             exec: {
-                                command: ["echo", "1"]
+                                command: ["cat", "/deployer/ready.txt"]
                             }
                         },
                         ports: [
@@ -101,16 +127,7 @@
                                 port: 3012,
                             },
                         ],
-                        environmentVariables: [
-                            {
-                                name: "AES_KEY",
-                                secureValue: ""
-                            },
-                            {
-                                name: "HMAC_KEY",
-                                secureValue: ""
-                            }
-                        ],
+                        environmentVariables: envs,
                         volumeMounts: [
                             {
                                 name: "gitrepo",
@@ -152,34 +169,24 @@
             return new Promise(resolve => setTimeout(resolve, ms));
         }
 
-        function connect(address) {
+        async function connect(address) {
             return new Promise(function (resolve, reject) {
-                ws = new WebSocket("ws://" + address + ":3012")
+
+                // Second connection suceeds
+                let ws = new WebSocket("ws://" + address + ":3012");
+
                 ws.onopen = function () {
-
-                    console.log("connected")
-                    setInterval(function () {
-                        ws.send("start");
-
-                    }, 1000)
-                    
-                    resolve("connected")
+                    ws.send("start");
+                    resolve("connected");
                 };
 
                 ws.onmessage = function (evt) {
-                    term.writeln(evt.data)
-                    // var received_msg = evt.data;
+                    term.writeln(evt.data);
                 };
                 ws.onclose = function () {
-                    term.writeln("Connection closed");
-                    console.log("Connection is closed...");
-                    reject("Connection error")
+                    console.log("connection lost");
+                    throw("Connection error");
                 };
-                ws.onerror = function (err) {
-                    console.log(err);
-                    term.writeln("Error connecting");
-                    reject("Connection error")
-                }
             });
         }
 
