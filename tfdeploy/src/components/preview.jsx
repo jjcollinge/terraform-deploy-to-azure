@@ -9,8 +9,9 @@ import './preview.css';
 import * as WebfontLoader from 'xterm-webfont'
 import chalk from 'chalk';
 import * as msRest from 'ms-rest-js';
-import {ContainerInstanceManagementClient} from '../libs/azure-containerinstance/esm/containerInstanceManagementClient'
-import {token, subscriptionId} from './creds.private'
+import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient'
+import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient'
+import { token, subscriptionId } from './creds.private'
 
 const terminalStyle = {
     margin: "3% 0"
@@ -19,10 +20,15 @@ const terminalStyle = {
 let options = { enabled: true, level: 2 };
 const forcedChalk = new chalk.constructor(options);
 
+const newGUID = () => {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
 class Preview extends Component {
     state = {
         output: "Loading...",
         xterm: {},
+        webSocket: null,
     }
 
     async componentDidMount() {
@@ -45,28 +51,52 @@ class Preview extends Component {
         let tfvars = []
         console.log(this.props.variables)
         this.props.variables.forEach(variable => {
-            console.log(variable)
+            console.log(variable);
             let value = variable.value ? variable.value : '""';
-            xterm.writeln(`${variable.name} = ${value}`)
-            
+            xterm.writeln(`${variable.name} = ${value}`);
+
             tfvars.push({
                 name: "TF_VAR_" + variable.name,
                 value: value,
             });
         })
-        xterm.writeln("- - - - - - - - - - - - - -")
+        xterm.writeln("- - - - - - - - - - - - - -");
         xterm.fit();
 
         this.setState({ xterm: xterm });
 
+        let t = setInterval(function () {
+            xterm.write(".");
+        }, 300);
+
         try {
-            let ipAddress = await this.createACIInstance(token, subscriptionId, "temp-deployazure", "container1", this.props.git.url, this.props.git.commit, tfvars);
+            let guid = newGUID();
+            let resourceGroupName = "tfdeploy-" + guid;
+            await this.createResourceGroup(token, subscriptionId, resourceGroupName)
+            let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, tfvars);
             await this.connect(ipAddress);
+            clearInterval(t);
+
+            let line = ""
+            xterm.on("key", (k, e) => {
+                // TODO: verify this captures enter key on 
+                // different platforms and browsers
+                if (e.keyCode === 13) {
+                    this.send(line + "\n");
+                    line = ""
+                    xterm.write("\r\n")
+                    return
+                }
+                // If enter not pressed build up line
+                xterm.write(forcedChalk.yellow(k));
+                line += k;
+            });
 
         } catch (e) {
+            xterm.writeln("connection lost");
             xterm.writeln(e.toString());
         }
-
+        clearInterval(t);
     }
 
     render() {
@@ -87,14 +117,44 @@ class Preview extends Component {
         )
     }
 
+    createResourceGroup = this.createResourceGroup.bind(this);
+
+    async createResourceGroup(token, subscriptionId, name) {
+        console.log(this.props.user.token);
+        this.state.xterm.writeln("Creating a resource group to contain Terraform ACI container: '" + name + "' \r\n");
+        const creds = new msRest.TokenCredentials(token);
+        const client = new ResourceManagementClient(creds, subscriptionId);
+
+        let group = await client.resourceGroups.createOrUpdate(name, {
+            location: defaultLocation,
+        });
+
+        console.log(group)
+        return
+    }
+
+    async deleteResourceGroup(token, subscriptionId, name) {
+        console.log(this.props.user.token);
+        this.state.xterm.writeln("Deleting the resource group used by the Terraform ACI container \r\n");
+        const creds = new msRest.TokenCredentials(token);
+        const client = new ResourceManagementClient(creds, subscriptionId);
+
+        let group = await client.resourceGroups.delete(name);
+
+        console.log(group)
+        return
+    }
+
     createACIInstance = this.createACIInstance.bind(this);
 
     async createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let term = this.state.xterm;
-        term.write("Starting ACI Container for deployment");
+        term.writeln("Starting ACI Container for deployment \r\n");
 
+        // let token = this.props.user.token;
+        console.log(this.props.user.token);
         const creds = new msRest.TokenCredentials(token);
-        const client = new ContainerInstanceManagementClient(creds, subscriptionId);
+        const client = new ContainerInstanceManagementClient(creds, subscriptionId);        
 
         let envs = [
             {
@@ -112,7 +172,7 @@ class Preview extends Component {
         });
 
         let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
-            location: "eastus",
+            location: defaultLocation,
             osType: "linux",
             restartPolicy: "Never",
             ipAddress: {
@@ -193,14 +253,14 @@ class Preview extends Component {
     }
 
     connect = this.connect.bind(this);
-    
+
     async connect(address) {
         let term = this.state.xterm;
 
-        return new Promise(function (resolve, reject) {
-
+        return new Promise((resolve, reject) => {
             // Second connection suceeds
             let ws = new WebSocket("ws://" + address + ":3012");
+            this.setState({ webSocket: ws });
 
             ws.onopen = function () {
                 ws.send("start");
@@ -210,23 +270,35 @@ class Preview extends Component {
             ws.onmessage = function (evt) {
                 term.writeln(evt.data);
             };
+
             ws.onclose = function () {
                 console.log("connection lost");
-                throw("Connection error");
+
+                //Todo: Skull causes error -> RangeError: NaN is not a valid code point
+                // let skull = String.fromCodePoint('U+2620');
+                let skull = "☠️";
+                term.writeln(forcedChalk.red(`\r\n\r\n Connection error ${skull}`));
             };
         });
     }
 
+    send = this.send.bind(this);
+
     // Todo: This won't work
-    accept() {
-        // ws.send("yes\n");
+    send(message) {
+        console.log("sent triggered")
+        let ws = this.state.webSocket
+        if (ws === null) {
+            throw "Connection not available, cannot send message"
+        }
+        ws.send(message);
     }
 }
 
 const mapStateToProps = state => ({
     variables: state.variables,
     user: state.user,
-    git: state.git,    
+    git: state.git,
 });
 
 const mapDispatchToProps = dispatch => ({
@@ -238,5 +310,7 @@ const mapDispatchToProps = dispatch => ({
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+const defaultLocation = "eastus";
 
 export default connect(mapStateToProps, mapDispatchToProps)(Preview);

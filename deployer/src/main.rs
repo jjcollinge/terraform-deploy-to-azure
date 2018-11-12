@@ -45,16 +45,9 @@ fn main() {
           tx_connections_reciever
             .send(out.clone())
             .expect("send connection failed");
-        } else if msg_str == "yes\n" || msg_str == "cancel\n" {
+        } else {
           // Send stdin
           tx_stdin.send(msg_str).expect("send stdin failed");
-        } else {
-          out
-            .send(Message::Text(format!("Invalid command sent '{}'", msg_str)))
-            .expect("send invalid command failed");
-          out
-            .close(ws::CloseCode::Invalid)
-            .expect("connection close failed");
         }
         Ok(())
       }
