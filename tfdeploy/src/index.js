@@ -1,7 +1,7 @@
 import { runWithAdal } from 'react-adal';
 import { authContext } from './adalConfig.js';
 
-const DO_NOT_LOGIN = false;
+const DO_NOT_LOGIN = true;
 
 runWithAdal(authContext, () => {
   // eslint-disable-next-line

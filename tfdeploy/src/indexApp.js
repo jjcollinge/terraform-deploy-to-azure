@@ -19,6 +19,9 @@ const initialState = {
     stage: -1,
     variables: [],
     user: {},
+    git: {
+        commit: "e1841981cc079a3a67c1ffbe688df71b791ce9b4"
+    }
 }
 
 const allReducers = combineReducers({
