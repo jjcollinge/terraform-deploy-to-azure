@@ -6,10 +6,6 @@ import './variablesform.css'
 import { setVariable } from '../actions/variablesActions';
 import { incrementStage } from '../actions/stageActions';
 
-const hide = {
-    display: 'none'
-}
-
 class VariablesForm extends Component {
 
     handlePlanSubmit = this.handlePlanSubmit.bind(this);
@@ -20,7 +16,6 @@ class VariablesForm extends Component {
                 this.props.setVariable(prop, values[prop])
             }
         }
-
         this.props.incrementStage();
     }
 
@@ -31,8 +26,7 @@ class VariablesForm extends Component {
                 direction="row"
                 justify="center"
                 alignItems="center"
-                className="variablesform"
-                style={this.props.showVarForm ? {} : hide}>
+                className="variablesform">
                 <form
                     onSubmit={this.props.handleSubmit(this.handlePlanSubmit)}
                     className="variablesform-form">
@@ -68,7 +62,6 @@ class VariablesForm extends Component {
 }
 
 const mapStateToProps = state => ({
-    showVarForm: state.stage === 0,
     variables: state.variables,
 });
 
@@ -79,6 +72,6 @@ const mapDispatchToProps = dispatch => ({
     incrementStage: () => {
         dispatch(incrementStage());
     }
-})
+});
 
 export default connect(mapStateToProps, mapDispatchToProps)(reduxForm({ form: 'variables' })(VariablesForm))

@@ -1,4 +1,5 @@
 import React from 'react';
+import { connect } from 'react-redux';
 import NavBar from './navbar'
 import StatusBar from './statusbar'
 import Loading from './loading'
@@ -16,11 +17,15 @@ const App = (props) => {
     <div style={wrapperStyle}>
       <NavBar />
       <StatusBar />
-      <Loading />
-      <VariablesForm />
-      <Preview />
+      {props.stage === -1 ? <Loading /> : ''}
+      {props.stage ===  0 ? <VariablesForm /> : ''}
+      {props.stage ===  1 ? <Preview /> : ''}
     </div>
   );
 };
 
-export default App
+const mapStateToProps = state => ({
+  stage: state.stage,
+})
+
+export default connect(mapStateToProps)(App);
