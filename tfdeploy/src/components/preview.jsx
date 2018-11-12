@@ -74,16 +74,40 @@ class Preview extends Component {
             let resourceGroupName = "tfdeploy-" + guid;
             await this.createResourceGroup(token, subscriptionId, resourceGroupName)
             let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, tfvars);
-            await this.connect(ipAddress);
+
+            xterm.writeln("\r\nContainer started @ " + ipAddress);
+
+            // Connect and provide a func to execute when connection lost
+            await this.connect(ipAddress, async e => {
+                let skull = "☠️";
+                xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, retrying in 8 seconds`));
+                await sleep(8000);
+                await this.connect(ipAddress, e => {
+                    xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, giving up`));
+                });
+                clearInterval(t);
+            });
+
             clearInterval(t);
+
+            xterm.writeln(forcedChalk.greenBright("Connected interactive terminal to Terroform container \n\n"));
+
+
+            // Term is now available for input so lets focus on it. 
+            xterm.focus();
 
             let line = ""
             xterm.on("key", (k, e) => {
                 // TODO: verify this captures enter key on 
                 // different platforms and browsers
                 if (e.keyCode === 13) {
+                    if (line == "yes") {
+                        this.props.incrementStage();
+                    }
+
                     this.send(line + "\n");
                     line = ""
+                    xterm.write("\r\n")
                     xterm.write("\r\n")
                     return
                 }
@@ -93,8 +117,7 @@ class Preview extends Component {
             });
 
         } catch (e) {
-            xterm.writeln("connection lost");
-            xterm.writeln(e.toString());
+            xterm.writeln("An error occurred: " + e.toString());
         }
         clearInterval(t);
     }
@@ -121,7 +144,7 @@ class Preview extends Component {
 
     async createResourceGroup(token, subscriptionId, name) {
         console.log(this.props.user.token);
-        this.state.xterm.writeln("Creating a resource group to contain Terraform ACI container: '" + name + "' \r\n");
+        this.state.xterm.writeln("\r\nCreating a resource group to contain Terraform ACI container: '" + name + "'");
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
@@ -133,9 +156,11 @@ class Preview extends Component {
         return
     }
 
+    deleteResourceGroup = this.deleteResourceGroup.bind(this);
+
     async deleteResourceGroup(token, subscriptionId, name) {
         console.log(this.props.user.token);
-        this.state.xterm.writeln("Deleting the resource group used by the Terraform ACI container \r\n");
+        this.state.xterm.writeln("\r\nDeleting the resource group used by the Terraform ACI container");
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
@@ -149,12 +174,12 @@ class Preview extends Component {
 
     async createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let term = this.state.xterm;
-        term.writeln("Starting ACI Container for deployment \r\n");
+        term.writeln("\r\nStarting ACI Container for deployment ");
 
         // let token = this.props.user.token;
         console.log(this.props.user.token);
         const creds = new msRest.TokenCredentials(token);
-        const client = new ContainerInstanceManagementClient(creds, subscriptionId);        
+        const client = new ContainerInstanceManagementClient(creds, subscriptionId);
 
         let envs = [
             {
@@ -246,6 +271,7 @@ class Preview extends Component {
                     term.writeln("IP Address is undefined, something has gone wrong");
                     throw "failed"
                 }
+                await sleep(25000)
                 return existing.ipAddress.ip;
             }
             return "failed"
@@ -254,7 +280,7 @@ class Preview extends Component {
 
     connect = this.connect.bind(this);
 
-    async connect(address) {
+    async connect(address, onClose) {
         let term = this.state.xterm;
 
         return new Promise((resolve, reject) => {
@@ -267,18 +293,20 @@ class Preview extends Component {
                 resolve("connected");
             };
 
-            ws.onmessage = function (evt) {
+            ws.onmessage = (evt) => {
                 term.writeln(evt.data);
+
+                // Cleanup the container if 
+                // TF exits
+                if (evt.data === "command exited") {
+                    term.writeln("Terraform exited -> starting cleanup")
+                    this.deleteResourceGroup().then(() => {
+                        term.writeln("Cleanup finished")
+                    });
+                }
             };
 
-            ws.onclose = function () {
-                console.log("connection lost");
-
-                //Todo: Skull causes error -> RangeError: NaN is not a valid code point
-                // let skull = String.fromCodePoint('U+2620');
-                let skull = "☠️";
-                term.writeln(forcedChalk.red(`\r\n\r\n Connection error ${skull}`));
-            };
+            ws.onclose = onClose;
         });
     }
 

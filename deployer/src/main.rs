@@ -1,16 +1,16 @@
 extern crate ws;
 
+use std::fs::File;
+use std::io::prelude::*;
 use std::io::Write;
 use std::io::{BufRead, BufReader, BufWriter};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::Duration;
-use std::io::prelude::*;
-use std::fs::File;
 use std::{thread, time};
 
 use std::sync::mpsc::Sender as mpsc_sender;
-use ws::{Message};
+use ws::Message;
 
 fn main() {
   println!("Starting Terraform Deployer Websocket server");
@@ -71,7 +71,6 @@ fn main() {
 
   println!("Starting TF Deployment");
 
-
   // Create a channel for both stdout and stderr to write too
   let (input, combinded_cmd_output) = channel();
 
@@ -97,10 +96,6 @@ fn main() {
         stdin_txt,
         stdin_txt.as_bytes()
       );
-      connection
-        .send("Written back to stdin".to_string())
-        .unwrap();
-      connection.send(Message::Text(stdin_txt)).unwrap();
     }
 
     // Check if any new connections have been made
@@ -124,6 +119,9 @@ fn main() {
         connection
           .send(Message::Text("command exited".to_string()))
           .unwrap();
+
+        // wait for message to send
+        thread::sleep(time::Duration::from_millis(200));
 
         // Shutdown the server and exit
         handle.shutdown().unwrap();
@@ -150,7 +148,6 @@ fn start_terraform(input: mpsc_sender<String>) -> std::process::ChildStdin {
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
     .stdin(Stdio::piped())
-    .env("TF_LOG", "WARN")
     .current_dir("/git")
     .spawn()
     .expect("failed to execute process");

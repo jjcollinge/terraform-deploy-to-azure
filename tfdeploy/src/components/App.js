@@ -19,7 +19,7 @@ const App = (props) => {
       <StatusBar />
       {props.stage === -1 ? <Loading /> : ''}
       {props.stage ===  0 ? <VariablesForm /> : ''}
-      {props.stage ===  1 ? <Preview /> : ''}
+      {props.stage >= 1 ? <Preview /> : ''}
     </div>
   );
 };
