@@ -1,0 +1,216 @@
+<!doctype html>
+<!-- 
+// Notes:
+// Ordering = Encrypt then MAC https://crypto.stackexchange.com/questions/202/should-we-mac-then-encrypt-or-encrypt-then-mac
+// Keys = HDKF from shared secert https://security.stackexchange.com/questions/37880/why-cant-i-use-the-same-key-for-encryption-and-mac 
+-->
+
+
+<!--  https://github.com/beatgammit/base64-js -->
+<script src="base64js.min.js"></script>
+
+<head>
+    <!-- Xterm import-->
+    <link rel="stylesheet" href="node_modules/xterm/dist/xterm.css" />
+    <script src="node_modules/xterm/dist/xterm.js"></script>
+    <script src="node_modules/xterm/dist/addons/fit/fit.js"></script>
+
+    <!-- AzureSDK Import -->
+    <script src="node_modules/ms-rest-js/dist/msRest.browser.js"></script>
+    <script src="node_modules/ms-rest-azure-js/dist/msRestAzure.js"></script>
+    <script src="node_modules/ms-rest-browserauth/dist/msAuth.js"></script>
+    <script src="azure-containerinstance/dist/arm-containerinstance.js"></script>
+    <script src="creds.private.js"></script>
+
+    <script type="text/javascript">
+        var ws = "";
+
+        function start() {
+            term.writeln("");
+            term.write("Starting ACI Container for deployment");
+            let t = setInterval(function () {
+                term.write(".")
+            }, 300);
+
+            createACIInstance(token, subscriptionId,
+                "temp-deployazure", "test42",
+                "https://github.com/jjcollinge/tfexample",
+                "706e0ec1efbed9e87223a4c93e2ba698a4f30aaa", [
+                    {
+                        name: "TF_VAR_azure_directory",
+                        secureValue: "example",
+                    }
+                ]).then(async x => {
+                    term.write("\r\nContainer started");
+                    await sleep(12000)
+                    term.write("\r\nConnecting to Websocket server @ " + x);
+                    try {
+                        await connect(x);
+                        term.writeln("\r\nKicking off Terraform deployment");
+                    } catch (e) {
+                        // retry
+                        term.write("\r\nConnection failed, retrying");
+                        try {
+                            await connect(x);
+                        } catch (e) {
+                            term.write("\r\nConnection failed");
+                        }
+                    }
+                    clearInterval(t);
+                }).catch(e => {
+                    clearInterval(t);
+                    term.write("\r\n" + e.toString());
+                    console.log(e);
+                });
+        }
+
+
+        async function createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, tfvars) {
+            const creds = new msRest.TokenCredentials(token);
+            const client = new Azure.ArmContainerinstance.ContainerInstanceManagementClient(creds, subscriptionId);
+
+            let envs = [
+                {
+                    name: "AES_KEY",
+                    secureValue: ""
+                },
+                {
+                    name: "HMAC_KEY",
+                    secureValue: ""
+                }
+            ];
+            // Add additional vars
+            tfvars.forEach(function (x) {
+                envs.push(x)
+            });
+
+            let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
+                location: "eastus",
+                osType: "linux",
+                restartPolicy: "Never",
+                ipAddress: {
+                    type: "Public",
+                    ports: [
+                        {
+                            protocol: "TCP",
+                            port: 3012
+                        }
+                    ]
+                },
+                volumes: [
+                    {
+                        name: "gitrepo",
+                        gitRepo: {
+                            repository: repoUrl,
+                            revision: repoCommitHash,
+                            directory: ".",
+                        }
+                    }
+                ],
+                containers: [
+                    {
+                        name: "terraform-deployer",
+                        image: "lawrencegripper/tfdeployer",
+                        livenessProbe: {
+                            exec: {
+                                command: ["echo", "1"]
+                            }
+                        },
+                        readinessProbe: {
+                            exec: {
+                                command: ["cat", "/deployer/ready.txt"]
+                            }
+                        },
+                        ports: [
+                            {
+                                protocol: "TCP",
+                                port: 3012,
+                            },
+                        ],
+                        environmentVariables: envs,
+                        volumeMounts: [
+                            {
+                                name: "gitrepo",
+                                mountPath: "/git"
+                            }
+                        ],
+                        resources: {
+                            requests: {
+                                memoryInGB: 1,
+                                cpu: 1,
+                            }
+                        }
+                    }],
+            })
+
+            while (true) {
+                let existing = await client.containerGroups.get(resourceGroup, containerGroupName);
+                console.log(existing);
+                if (existing.containers[0].instanceView.currentState.state !== "Running") {
+                    if (existing.containers[0].instanceView.currentState.detailStatus === "Completed" || existing.containers[0].instanceView.currentState.detailStatus === "Terminated") {
+                        term.writeln("Container instance already exited :(");
+                        throw "failed"
+                    }
+                    await sleep(5000)
+                    continue
+                }
+                if (existing.ipAddress != null) {
+                    if (existing.ipAddress.ip === undefined) {
+                        term.writeln("IP Address is undefined, something has gone wrong");
+                        throw "failed"
+                    }
+                    return existing.ipAddress.ip;
+                }
+                return nil
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function connect(address) {
+            return new Promise(function (resolve, reject) {
+
+                // Second connection suceeds
+                let ws = new WebSocket("ws://" + address + ":3012");
+
+                ws.onopen = function () {
+                    ws.send("start");
+                    resolve("connected");
+                };
+
+                ws.onmessage = function (evt) {
+                    term.writeln(evt.data);
+                };
+                ws.onclose = function () {
+                    console.log("connection lost");
+                    throw("Connection error");
+                };
+            });
+        }
+
+        function accept() {
+            ws.send("yes\n");
+        }
+
+
+
+    </script>
+</head>
+
+<body>
+    <div id="terminal"></div>
+    <script>
+        Terminal.applyAddon(fit);
+
+        var term = new Terminal();
+        term.open(document.getElementById('terminal'));
+        term.writeln("");
+        term.writeln('Welcome to \x1B[1;3;31mTerraform Deploy to Azure\x1B[0m $ ')
+        term.fit();
+        start();
+    </script>
+</body>
+
+</html>

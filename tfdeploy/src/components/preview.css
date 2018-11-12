@@ -1,0 +1,15 @@
+.preview {
+    width: 100%;
+}
+
+.preview-terminal {
+    background-color: #161616;
+    width: 50%;
+    flex: 1;
+    border-radius:5px;
+    color: #ffffff;
+}
+
+.terminal, .xterm {
+    padding: 20px !important;
+}

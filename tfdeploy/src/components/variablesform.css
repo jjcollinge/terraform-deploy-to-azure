@@ -1,0 +1,34 @@
+.variablesform-form {
+    margin-top: 2%;
+    width: 50%;
+}
+
+.variablesform-field {
+    margin: 0.5em 0;
+}
+
+.variablesform label {
+    color: #ffffff;
+}
+
+.variablesform input {
+    width: 80%;
+}
+
+.variablesform-btn {
+    margin-right: 10%;
+    margin-top: 4%;
+}
+
+.variablesform .btn, .btn:hover, .btn:active, .btn:visited {
+    border: 0;
+    color: #ffffff;
+}
+
+.variablesform .btn  {
+    background-color: #5C4EE5 !important;
+}
+
+.variablesform .btn:hover  {
+    background-color: #00B050 !important;
+}
