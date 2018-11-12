@@ -1,11 +1,11 @@
 import React, { Component } from 'react';
 import { Grid } from '@material-ui/core'
 import { connect } from 'react-redux';
+import { incrementStage } from './../actions/stageActions';
+import { addVariable, TEXT_FIELD } from '../actions/variablesActions';
 import './loading.css';
 import logo from './logo.svg';
 import './../actions/stageActions';
-import { incrementStage } from './../actions/stageActions';
-import { addVariable, TEXT_FIELD } from '../actions/variablesActions';
 import hcltojson from 'hcl-to-json';
 
 const re = /(?:\.([^.]+))?$/;
@@ -128,8 +128,8 @@ class Loading extends Component {
             console.log("has cloned git")
             return
         }
-        try {
-            this.setState({ isCloningGit: true }, async () => {
+        this.setState({ isCloningGit: true }, async () => {
+            try {
                 let mergedFile = 'merged.tf'
                 let mergedFileExists = await w.pfs.exists(mergedFile)
                 if (!mergedFileExists) {
@@ -151,10 +151,15 @@ class Loading extends Component {
                         _this.componentWillUnmount();
                     });
                 }
-            });
-        } catch (err) {
-            console.error(err) // TODO: Handle errors
-        }
+            } catch (err) {
+                clearInterval(this.interval);
+                this.setState({
+                    text: `Error: ${err.message}`,
+                    numDots: 0,
+                });
+                console.error(err); // TODO: Handle errors
+            }
+        });
     }
 
     componentWillUnmount() {

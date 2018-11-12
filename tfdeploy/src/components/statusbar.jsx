@@ -6,15 +6,14 @@ import { connect } from 'react-redux';
 import { setGit } from '../actions/gitActions';
 import { incrementStage } from '../actions/stageActions';
 
-const defaultGitURL = "https://github.com/repo"
 const defaultGitBranch = "master"
 
 const extractBranchFromURL = (url) => {
     let branch = url.split("tree/").pop(); // Warning: will only work with standard GitHub urls
     if (branch === url) {
-        branch = 'master'
+        branch = defaultGitBranch;
     }
-    return branch
+    return branch;
 }
 
 class StatusBar extends Component {
@@ -29,7 +28,7 @@ class StatusBar extends Component {
         this.props.setGit({
             url: url,
             branch: branch
-        })
+        });
         this.setState({
             promptGit: false
         });
@@ -77,7 +76,7 @@ const mapDispatchToProps = dispatch => ({
     incrementStage: () => {
         dispatch(incrementStage());
     }
-})
+});
 
 
 export default connect(mapStateToProps, mapDispatchToProps)(StatusBar);
