@@ -90,7 +90,7 @@ class Preview extends Component {
 
             clearInterval(t);
 
-            xterm.writeln(forcedChalk.greenBright("Connected interactive terminal to Terroform container \n\n"));
+            xterm.writeln(forcedChalk.greenBright("\r\nConnected interactive terminal to Terraform container \n\n"));
 
 
             // Term is now available for input so lets focus on it. 
