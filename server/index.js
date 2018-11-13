@@ -3,11 +3,18 @@ const app = express();
 const expressWs = require('express-ws')(app);
 const pty = require('node-pty');
 const fs = require('fs');
+var cors = require('cors');
 
 setTimeout(() => {
     console.log("Timedout after 45mins... exiting")
     process.exit(1)
-}, 1000 * 60 * 45) 
+}, 1000 * 60 * 45) // ms in second * seconds in mins * mins  
+
+app.use(cors());
+
+app.get('/alive', function (req, res) {
+    res.send("alive");
+});
 
 app.ws('/terminal', function (ws, req) {
     console.log('Connected to terminal');

@@ -13,6 +13,9 @@
     "immutability-helper": "^2.8.1",
     "isomorphic-git": "^0.38.0",
     "jquery": "^3.3.1",
+    "ms-rest-azure-js": "^1.0.179",
+    "ms-rest-browserauth": "^0.1.1",
+    "ms-rest-js": "^1.0.455",
     "react": "^16.6.0",
     "react-adal": "^0.4.18",
     "react-dom": "^16.6.0",
@@ -23,11 +26,9 @@
     "redux": "^4.0.1",
     "redux-form": "^7.4.2",
     "redux-thunk": "^2.3.0",
+    "requestretry": "^3.0.2",
     "xterm": "^3.8.0",
-    "xterm-webfont": "^1.1.1",
-    "ms-rest-azure-js": "^1.0.179",
-    "ms-rest-browserauth": "^0.1.1",
-    "ms-rest-js": "^1.0.455"
+    "xterm-webfont": "^1.1.1"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -43,5 +44,8 @@
     "not dead",
     "not ie <= 11",
     "not op_mini all"
-  ]
+  ],
+  "devDependencies": {
+    "@types/requestretry": "^1.12.3"
+  }
 }

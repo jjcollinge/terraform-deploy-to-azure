@@ -13,6 +13,7 @@ import * as msRest from 'ms-rest-js';
 import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient'
 import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient'
 import { token, subscriptionId } from './creds.private'
+import * as request from 'requestretry'
 
 const terminalStyle = {
     margin: "3% 0"
@@ -77,13 +78,25 @@ class Preview extends Component {
             await this.createResourceGroup(token, subscriptionId, resourceGroupName)
             let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, tfvars);
 
-            xterm.writeln("\r\nContainer started @ " + ipAddress);
+            xterm.writeln("\r\nContainer starting @ " + ipAddress);
+
+            // Wait for the server to be alive 
+            await request({
+                url: `http://${ipAddress}:3012/alive`,
+                json: false,
+
+                // The below parameters are specific to request-retry
+                maxAttempts: 15, 
+                retryDelay: 4000,
+                timeout: 1000, 
+                retryStrategy: request.RetryStrategies.HTTPOrNetworkError // retry on 5xx or network errors
+            });
 
             // Connect and provide a func to execute when connection lost
             await this.connect(ipAddress, async e => {
                 let skull = "☠️";
                 xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, retrying in 8 seconds`));
-                await sleep(8000);
+                await sleep(12000);
                 await this.connect(ipAddress, e => {
                     xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, giving up`));
                 });
@@ -97,9 +110,10 @@ class Preview extends Component {
             clearInterval(t);
 
             xterm.writeln(forcedChalk.greenBright("\r\nConnected interactive terminal to Terraform container \n\n"));
-
+            xterm.writeln(forcedChalk.greenBright("\r\nuser@tfdeploy:") + forcedChalk.blueBright("/git") + "$ terraform apply \n\n");
 
         } catch (e) {
+            console.log(e);
             xterm.writeln("An error occurred: " + e.toString());
         }
         clearInterval(t);
@@ -254,7 +268,6 @@ class Preview extends Component {
                     term.writeln("IP Address is undefined, something has gone wrong");
                     throw "failed"
                 }
-                await sleep(25000);
                 return existing.ipAddress.ip;
             }
             return "failed"
