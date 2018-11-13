@@ -5,6 +5,8 @@ const pty = require('node-pty');
 const fs = require('fs');
 var cors = require('cors');
 
+console.log(encryptAndSign("barrywhite", keys))
+
 setTimeout(() => {
     console.log("Timedout after 45mins... exiting")
     process.exit(1)
@@ -34,7 +36,8 @@ app.ws('/terminal', function (ws, req) {
         return (data) => {
             s += data;
             if (!sender) {
-                sender = setTimeout(() => {
+                sender = setTimeout(async () => {
+                    message = encryption.encryptAndSign(s, keys)
                     socket.send(s);
                     s = '';
                     sender = null;

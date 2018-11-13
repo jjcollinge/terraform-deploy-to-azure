@@ -114,7 +114,7 @@ class Preview extends Component {
 
         } catch (e) {
             console.log(e);
-            xterm.writeln("An error occurred: " + e.toString());
+            xterm.writeln("An error occurred while connecting to the Terraform container: " + e.toString());
         }
         clearInterval(t);
     }
