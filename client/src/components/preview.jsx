@@ -15,6 +15,7 @@ import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceMana
 import { token, subscriptionId } from './creds.private';
 import * as request from 'requestretry';
 import * as encryption from './encryption'
+import { ManagedServiceIdentityClient } from '../libs/arm-msi/esm/managedServiceIdentityClient'
 
 const terminalStyle = {
     margin: "3% 0"
@@ -39,7 +40,7 @@ class Preview extends Component {
         // Generate some keys for encrypting coms between the client and the ACI container
         // let keys = await encryption.generateKeys();
         let keys = await encryption.generateKeys();
-    
+
         this.setState({ keys: keys });
 
         let termElem = document.getElementById('terminal')
@@ -95,12 +96,35 @@ class Preview extends Component {
         try {
             let guid = newGUID();
             let resourceGroupName = "tfdeploy-" + guid;
-            await this.createResourceGroup(token, subscriptionId, resourceGroupName)
-            let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, aciContainerEnvironmentVars);
+            let identityName = guid;
+            await this.createResourceGroup(token,
+                subscriptionId,
+                resourceGroupName);
+            let res = await this.createManagedIdentity(token,
+                subscriptionId,
+                resourceGroupName,
+                identityName);
+            let identity = {
+                principalId: res.principalId,
+                tenantId: res.tenantId,
+                type: "UserAssigned",
+                userAssignedIdentities: {
+                    [res.id]: "",
+                },
+            }
+            console.log(identity)
+            let ipAddress = await this.createACIInstance(token,
+                subscriptionId,
+                resourceGroupName,
+                identity,
+                guid,
+                this.props.git.url,
+                this.props.git.commit,
+                aciContainerEnvironmentVars);
 
             xterm.writeln("\r\nContainer starting @ " + ipAddress);
 
-            // Wait for the server to be alive 
+            // Wait for the server to be alive
             await request({
                 url: `http://${ipAddress}:3012/alive`,
                 json: false,
@@ -159,6 +183,21 @@ class Preview extends Component {
         )
     }
 
+    createManagedIdentity = this.createManagedIdentity.bind(this);
+
+    async createManagedIdentity(token, subscriptionId, resourceGroupName, name) {
+        this.state.xterm.writeln("\r\nCreating a new managed identity: '" + name + "'");
+        const creds = new msRest.TokenCredentials(token);
+        const client = new ManagedServiceIdentityClient(creds, subscriptionId);
+
+        let identity = await client.userAssignedIdentities.createOrUpdate(resourceGroupName, name, {
+            location: defaultLocation,
+        });
+
+        console.log(identity);
+        return identity
+    }
+
     createResourceGroup = this.createResourceGroup.bind(this);
 
     async createResourceGroup(token, subscriptionId, name) {
@@ -191,7 +230,7 @@ class Preview extends Component {
 
     createACIInstance = this.createACIInstance.bind(this);
 
-    async createACIInstance(token, subscriptionId, resourceGroup, containerGroupName, repoUrl, repoCommitHash, tfvars) {
+    async createACIInstance(token, subscriptionId, resourceGroup, identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let term = this.state.xterm;
         term.writeln("\r\nStarting ACI Container for deployment ");
 
@@ -203,6 +242,7 @@ class Preview extends Component {
         let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
             location: defaultLocation,
             osType: "linux",
+            identity: identity,
             restartPolicy: "Never",
             ipAddress: {
                 type: "Public",
@@ -290,7 +330,7 @@ class Preview extends Component {
             // Second connection suceeds
             let ws = new WebSocket("ws://" + address + ":3012/terminal");
 
-            // Wrapper for socket to handle encryption. 
+            // Wrapper for socket to handle encryption.
             let wsWrapper = {
                 original: ws,
                 addEventListener: (type, handler) => {
@@ -299,7 +339,7 @@ class Preview extends Component {
                             console.log("received:" + evt.data);
                             try {
                                 let msg = JSON.parse(evt.data);
-                                
+
                                 // Validate and decript the message
                                 let result = await encryption.validateAndDecrypt(msg, this.state.keys);
                                 if (!result.isValid) {
@@ -312,7 +352,7 @@ class Preview extends Component {
                                 if (result.message === "command exited") {
                                     this.state.xterm.writeln("\r\n" + forcedChalk.blueBright("The Terraform process exited: cleaning up...."));
                                     await this.deleteResourceGroup();
-                                    return; 
+                                    return;
                                 }
                                 // evt.data = result.message;
                                 return handler({
