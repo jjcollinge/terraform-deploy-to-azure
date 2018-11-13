@@ -4,6 +4,7 @@ import { incrementStage } from '../actions/stageActions';
 import { connect } from 'react-redux';
 import { Terminal } from 'xterm';
 import * as fit from 'xterm/lib/addons/fit/fit';
+import * as attach from 'xterm/lib/addons/attach/attach';
 import style from 'xterm/dist/xterm.css';
 import './preview.css';
 import * as WebfontLoader from 'xterm-webfont'
@@ -35,6 +36,7 @@ class Preview extends Component {
         let termElem = document.getElementById('terminal')
         Terminal.applyAddon(fit);
         Terminal.applyAddon(WebfontLoader);
+        Terminal.applyAddon(attach);
 
         let xterm = new Terminal({
             useStyle: true,
@@ -85,36 +87,17 @@ class Preview extends Component {
                 await this.connect(ipAddress, e => {
                     xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, giving up`));
                 });
+
+                xterm.attach(this.state.webSocket);
+
                 clearInterval(t);
             });
+            xterm.attach(this.state.webSocket);
 
             clearInterval(t);
 
             xterm.writeln(forcedChalk.greenBright("\r\nConnected interactive terminal to Terraform container \n\n"));
 
-
-            // Term is now available for input so lets focus on it. 
-            xterm.focus();
-
-            let line = ""
-            xterm.on("key", (k, e) => {
-                // TODO: verify this captures enter key on 
-                // different platforms and browsers
-                if (e.keyCode === 13) {
-                    if (line == "yes") {
-                        this.props.incrementStage();
-                    }
-
-                    this.send(line + "\n");
-                    line = ""
-                    xterm.write("\r\n")
-                    xterm.write("\r\n")
-                    return
-                }
-                // If enter not pressed build up line
-                xterm.write(forcedChalk.yellow(k));
-                line += k;
-            });
 
         } catch (e) {
             xterm.writeln("An error occurred: " + e.toString());
@@ -230,7 +213,7 @@ class Preview extends Component {
                     },
                     readinessProbe: {
                         exec: {
-                            command: ["cat", "/deployer/ready.txt"]
+                            command: ["cat", "/server/ready.txt"]
                         }
                     },
                     ports: [
@@ -248,8 +231,8 @@ class Preview extends Component {
                     ],
                     resources: {
                         requests: {
-                            memoryInGB: 1,
-                            cpu: 1,
+                            memoryInGB: 0.5,
+                            cpu: 0.5,
                         }
                     }
                 }],
@@ -263,7 +246,7 @@ class Preview extends Component {
                     term.writeln("Container instance already exited :(");
                     throw "failed"
                 }
-                await sleep(5000)
+                await sleep(5000);
                 continue
             }
             if (existing.ipAddress != null) {
@@ -271,7 +254,7 @@ class Preview extends Component {
                     term.writeln("IP Address is undefined, something has gone wrong");
                     throw "failed"
                 }
-                await sleep(25000)
+                await sleep(25000);
                 return existing.ipAddress.ip;
             }
             return "failed"
@@ -285,25 +268,12 @@ class Preview extends Component {
 
         return new Promise((resolve, reject) => {
             // Second connection suceeds
-            let ws = new WebSocket("ws://" + address + ":3012");
+            let ws = new WebSocket("ws://" + address + ":3012/terminal");
             this.setState({ webSocket: ws });
 
             ws.onopen = function () {
                 ws.send("start");
                 resolve("connected");
-            };
-
-            ws.onmessage = (evt) => {
-                term.writeln(evt.data);
-
-                // Cleanup the container if 
-                // TF exits
-                if (evt.data === "command exited") {
-                    term.writeln("Terraform exited -> starting cleanup")
-                    this.deleteResourceGroup().then(() => {
-                        term.writeln("Cleanup finished")
-                    });
-                }
             };
 
             ws.onclose = onClose;
