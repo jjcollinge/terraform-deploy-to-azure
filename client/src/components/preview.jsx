@@ -105,11 +105,14 @@ class Preview extends Component {
                 resourceGroupName,
                 identityName);
             let identity = {
-                principalId: res.principalId,
+                principalId: null,
                 tenantId: res.tenantId,
                 type: "UserAssigned",
                 userAssignedIdentities: {
-                    [res.id]: "",
+                    [res.id]: {
+                        clientId: res.clientId,
+                        principalId: res.principalId,
+                    }
                 },
             }
             console.log(identity)
