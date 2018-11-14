@@ -1,10 +1,4 @@
-phony: test, build, docker-build
-
-test:
-	cargo test
-
-build: 
-	cargo build
+phony: server-docker-build
 
 server-docker-build:
 	docker build -t lawrencegripper/tfdeployer:dev -f ./server/Dockerfile .
