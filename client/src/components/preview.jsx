@@ -10,10 +10,11 @@ import './preview.css';
 import * as WebfontLoader from 'xterm-webfont'
 import chalk from 'chalk';
 import * as msRest from 'ms-rest-js';
-import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient'
-import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient'
-import { token, subscriptionId } from './creds.private'
-import * as request from 'requestretry'
+import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient';
+import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient';
+import { token, subscriptionId } from './creds.private';
+import * as request from 'requestretry';
+import * as encryption from './encryption'
 
 const terminalStyle = {
     margin: "3% 0"
@@ -31,9 +32,16 @@ class Preview extends Component {
         output: "Loading...",
         xterm: {},
         webSocket: null,
+        keys: {}
     }
 
     async componentDidMount() {
+        // Generate some keys for encrypting coms between the client and the ACI container
+        // let keys = await encryption.generateKeys();
+        let keys = await encryption.generateKeys();
+    
+        this.setState({ keys: keys });
+
         let termElem = document.getElementById('terminal')
         Terminal.applyAddon(fit);
         Terminal.applyAddon(WebfontLoader);
@@ -51,14 +59,26 @@ class Preview extends Component {
         xterm.writeln(forcedChalk.greenBright("Terraform Deploy to Azure\n\n"));
         xterm.writeln("Variables:");
         xterm.writeln("- - - - - - - - - - - - - -")
-        let tfvars = []
+
+        let aciContainerEnvironmentVars = [
+            {
+                name: "AES_KEY",
+                secureValue: keys.aesKeyExport
+            },
+            {
+                name: "HMAC_KEY",
+                secureValue: keys.hmacKeyExport
+            }
+        ]
+
+        // Add Terraform variables specified in the form
         console.log(this.props.variables)
         this.props.variables.forEach(variable => {
             console.log(variable);
             let value = variable.value ? variable.value : '""';
             xterm.writeln(`${variable.name} = ${value}`);
 
-            tfvars.push({
+            aciContainerEnvironmentVars.push({
                 name: "TF_VAR_" + variable.name,
                 value: value,
             });
@@ -76,7 +96,7 @@ class Preview extends Component {
             let guid = newGUID();
             let resourceGroupName = "tfdeploy-" + guid;
             await this.createResourceGroup(token, subscriptionId, resourceGroupName)
-            let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, tfvars);
+            let ipAddress = await this.createACIInstance(token, subscriptionId, resourceGroupName, guid, this.props.git.url, this.props.git.commit, aciContainerEnvironmentVars);
 
             xterm.writeln("\r\nContainer starting @ " + ipAddress);
 
@@ -86,11 +106,13 @@ class Preview extends Component {
                 json: false,
 
                 // The below parameters are specific to request-retry
-                maxAttempts: 15, 
+                maxAttempts: 15,
                 retryDelay: 4000,
-                timeout: 1000, 
-                retryStrategy: request.RetryStrategies.HTTPOrNetworkError // retry on 5xx or network errors
+                timeout: 1000,
+                retryStrategy: retryStrategy // retry anything that isn't a 200
             });
+
+            // let ipAddress = "localhost";
 
             // Connect and provide a func to execute when connection lost
             await this.connect(ipAddress, async e => {
@@ -178,21 +200,6 @@ class Preview extends Component {
         const creds = new msRest.TokenCredentials(token);
         const client = new ContainerInstanceManagementClient(creds, subscriptionId);
 
-        let envs = [
-            {
-                name: "AES_KEY",
-                secureValue: ""
-            },
-            {
-                name: "HMAC_KEY",
-                secureValue: ""
-            }
-        ];
-        // Add additional vars
-        tfvars.forEach(function (x) {
-            envs.push(x)
-        });
-
         let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
             location: defaultLocation,
             osType: "linux",
@@ -219,7 +226,7 @@ class Preview extends Component {
             containers: [
                 {
                     name: "terraform-deployer",
-                    image: "lawrencegripper/tfdeployer",
+                    image: "lawrencegripper/tfdeployer:dev",
                     livenessProbe: {
                         exec: {
                             command: ["echo", "1"]
@@ -227,7 +234,7 @@ class Preview extends Component {
                     },
                     readinessProbe: {
                         exec: {
-                            command: ["cat", "/server/ready.txt"]
+                            command: ["cat", "/app/ready.txt"]
                         }
                     },
                     ports: [
@@ -236,7 +243,7 @@ class Preview extends Component {
                             port: 3012,
                         },
                     ],
-                    environmentVariables: envs,
+                    environmentVariables: tfvars,
                     volumeMounts: [
                         {
                             name: "gitrepo",
@@ -260,7 +267,7 @@ class Preview extends Component {
                     term.writeln("Container instance already exited :(");
                     throw "failed"
                 }
-                await sleep(5000);
+                await sleep(3000);
                 continue
             }
             if (existing.ipAddress != null) {
@@ -282,10 +289,56 @@ class Preview extends Component {
         return new Promise((resolve, reject) => {
             // Second connection suceeds
             let ws = new WebSocket("ws://" + address + ":3012/terminal");
-            this.setState({ webSocket: ws });
+
+            // Wrapper for socket to handle encryption. 
+            let wsWrapper = {
+                original: ws,
+                addEventListener: (type, handler) => {
+                    if (type === "message") {
+                        return ws.addEventListener(type, async (evt) => {
+                            console.log("received:" + evt.data);
+                            try {
+                                let msg = JSON.parse(evt.data);
+                                
+                                // Validate and decript the message
+                                let result = await encryption.validateAndDecrypt(msg, this.state.keys);
+                                if (!result.isValid) {
+                                    console.log(result.error);
+                                    throw "Invalid message received";
+                                }
+                                console.log(result);
+
+                                // Handle the server exiting, cleanup the resource group
+                                if (result.message === "command exited") {
+                                    this.state.xterm.writeln("\r\n" + forcedChalk.blueBright("The Terraform process exited: cleaning up...."));
+                                    await this.deleteResourceGroup();
+                                    return; 
+                                }
+                                // evt.data = result.message;
+                                return handler({
+                                    data: result.message
+                                });
+                            } catch (e) {
+                                console.log("Error in Websocket wrapper");
+                                console.log(e);
+                                console.log(evt);
+                            }
+
+                        });
+                    }
+                    return ws.addEventListener(type, handler);
+                },
+                // Encrypt before sending
+                send: async (data) => {
+                    console.log("sending" + data);
+                    let result = await encryption.encryptAndSign(data, this.state.keys);
+                    return ws.send(JSON.stringify(result));
+                },
+                readyState: 1,
+            }
+            this.setState({ webSocket: wsWrapper });
 
             ws.onopen = function () {
-                ws.send("start");
                 resolve("connected");
             };
 
@@ -320,6 +373,11 @@ const mapDispatchToProps = dispatch => ({
 
 async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function retryStrategy(err, response, body){
+    // retry the request if we had an error or if the response was a 'Bad Gateway'
+    return err || response.statusCode !== 200;
 }
 
 const defaultLocation = "eastus";

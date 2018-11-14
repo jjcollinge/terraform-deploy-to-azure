@@ -5,4 +5,4 @@ cd /git
 rm -fr .terraform
 terraform init 
 cd -
-node index.js
+node ./server/index.js

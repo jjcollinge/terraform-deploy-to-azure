@@ -2,15 +2,16 @@
 # due to it's need for lots of stuff that bloats out the 
 # the container size
 FROM hashicorp/terraform:light
-WORKDIR /server
-COPY . .
+WORKDIR /app
+COPY ./server ./server
+# COPY ./shared ./shared
 RUN apk add --update nodejs nodejs-npm python build-base
-RUN npm install
+RUN cd ./server && npm install
 
 FROM hashicorp/terraform:light
-WORKDIR /server
+WORKDIR /app
 # Copy the output with NPM restored into final container
-COPY --from=0 /server/ .
+COPY --from=0 /app/ .
 RUN apk add --update nodejs
-RUN chmod +x server-entrypoint.sh
-ENTRYPOINT [ "sh", "-f", "/server/server-entrypoint.sh" ]
+RUN chmod +x ./server/server-entrypoint.sh
+ENTRYPOINT [ "sh", "-f", "/app/server/server-entrypoint.sh" ]

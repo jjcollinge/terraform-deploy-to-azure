@@ -1,6 +1,12 @@
+const utils = require("util")
+
 // If running in nodejs we need to bootstrap some stuff. 
 // This checks for node and does the bootstrapping...
-if (Object.prototype.toString.call(typeof process !== 'undefined' ? process : 0) === '[object process]') {
+// extracting the keys required from the environment variables.
+if (isNodeJs()) {
+    console.log("Using Nodejs WebCryto api");
+    keysAvailable = false;
+    
     const crypto = require('@trust/webcrypto')
     window = {}
     window.crypto = crypto;
@@ -19,6 +25,19 @@ if (Object.prototype.toString.call(typeof process !== 'undefined' ? process : 0)
 
     function atob(str) {
         return Buffer.from(str, 'base64').toString('binary');
+    }
+
+    console.log("Importing keys from environment vars");
+
+    if (process.env.AES_KEY === undefined || process.env.AES_KEY === "") {
+        console.log("AES_KEY env var not set. Exiting");
+        process.exit(1);
+    }
+
+
+    if (process.env.HMAC_KEY === undefined || process.env.HMAC_KEY === "") {
+        console.log("HMAC_KEY env var not set. Exiting");
+        process.exit(1);
     }
 
     // Import the keys from OS vars
@@ -54,57 +73,78 @@ if (Object.prototype.toString.call(typeof process !== 'undefined' ? process : 0)
         console.error(err);
     });
 
+    keysAvailable = true;
+
 } else {
-
-    // Generate a set of keys 
-    generateKeys().then(k => {
-        keys = k;
-        keysExist = true;
-    });
+    console.log("Encryption library not running under node - NOT EXPECTED");
+    throw "wrong execution environment"
 }
 
-var encoding = 'utf-8'
+const encoding = 'utf-8'
 
-generateKeys().then(async keys => {
-    console.log(keys);
-
-    let stringData = "Test data";
-
-    result = await encryptAndSign(stringData, keys);
-    console.log(result);
-   
-
-    newResult = await validateAndDecrypt(result, keys);
-    console.log(newResult);
-}).catch(e => {
-    console.log(e);
-});
-
-async function encryptAndSign(message, keys) {
-    let data = new TextEncoder(encoding).encode(message);
-
-    let encrypted = await encryptBody(data, keys.aesKey);
-    let signature = await signHMAC(encrypted.ivAndBody, keys.hmacKey);
+module.exports = {
+    encryptAndSign: async function (message, keys) {
+        let data = new (require('util').TextEncoder)(encoding).encode(message);
     
-    return {
-        body: encrypted.body,
-        iv: encrypted.iv,
-        sig: signature
-    }
-}
-
-async function validateAndDecrypt(message, keys) {
-    const ivAndBody = appendBuffer(arrayFromBase64(message.body), arrayFromBase64(message.iv));
-    if (!validateHMAC(message.sig, ivAndBody, keys.hmacKey)) {
+        let encrypted = await encryptBody(data, keys.aesKey);
+        let signature = await signHMAC(encrypted.ivAndBody, keys.hmacKey);
+        
         return {
-            isValid: false
+            body: encrypted.body,
+            iv: encrypted.iv,
+            sig: signature
         }
-    }
-    let decrypted = await decryptBody(message.body, keys.aesKey, message.iv);
-
-    return {
-        isValid: true, 
-        message: new TextDecoder(encoding).decode(decrypted)
+    },
+    validateAndDecrypt: async function(message, keys) {
+        const ivAndBody = appendBuffer(arrayFromBase64(message.body), arrayFromBase64(message.iv));
+        if (!await validateHMAC(message.sig, ivAndBody, keys.hmacKey)) {
+            return {
+                isValid: false
+            }
+        }
+        let decrypted = await decryptBody(message.body, keys.aesKey, message.iv);
+    
+        return {
+            isValid: true, 
+            message: new (require('util').TextDecoder)(encoding).decode(decrypted)
+        }
+    },
+    generateKeys: async function () {
+        var hmacKey = await window.crypto.subtle.generateKey(
+            {
+                name: "HMAC",
+                hash: { name: "SHA-256" }, //can be "SHA-1", "SHA-256", "SHA-384", or "SHA-512"
+                //length: 256, //optional, if you want your key length to differ from the hash function's block length
+            },
+            true, //whether the key is extractable (i.e. can be used in exportKey)
+            ["sign", "verify"] //can be any combination of "sign" and "verify"
+        );
+    
+        var hmacKeyExport = await window.crypto.subtle.exportKey(
+            "raw", //can be "jwk" or "raw"
+            hmacKey //extractable must be true
+        )
+    
+        var aesKey = await window.crypto.subtle.generateKey(
+            {
+                name: "AES-CTR",
+                length: 256, //can be  128, 192, or 256
+            },
+            true, //whether the key is extractable (i.e. can be used in exportKey)
+            ["encrypt", "decrypt"] //can "encrypt", "decrypt", "wrapKey", or "unwrapKey"
+        );
+    
+        var aesKeyExport = await window.crypto.subtle.exportKey(
+            "raw", //can be "jwk" or "raw"
+            aesKey //extractable must be true
+        )
+    
+        return {
+            hmacKey: hmacKey,
+            hmacKeyExport: base64FromArray(hmacKeyExport),
+            aesKey: aesKey,
+            aesKeyExport: base64FromArray(aesKeyExport),
+        }
     }
 }
 
@@ -168,43 +208,6 @@ async function validateHMAC(signature, data, key) {
     )
 }
 
-async function generateKeys() {
-    var hmacKey = await window.crypto.subtle.generateKey(
-        {
-            name: "HMAC",
-            hash: { name: "SHA-256" }, //can be "SHA-1", "SHA-256", "SHA-384", or "SHA-512"
-            //length: 256, //optional, if you want your key length to differ from the hash function's block length
-        },
-        true, //whether the key is extractable (i.e. can be used in exportKey)
-        ["sign", "verify"] //can be any combination of "sign" and "verify"
-    );
-
-    var hmacKeyExport = await window.crypto.subtle.exportKey(
-        "raw", //can be "jwk" or "raw"
-        hmacKey //extractable must be true
-    )
-
-    var aesKey = await window.crypto.subtle.generateKey(
-        {
-            name: "AES-CTR",
-            length: 256, //can be  128, 192, or 256
-        },
-        true, //whether the key is extractable (i.e. can be used in exportKey)
-        ["encrypt", "decrypt"] //can "encrypt", "decrypt", "wrapKey", or "unwrapKey"
-    );
-
-    var aesKeyExport = await window.crypto.subtle.exportKey(
-        "raw", //can be "jwk" or "raw"
-        aesKey //extractable must be true
-    )
-
-    return {
-        hmacKey: hmacKey,
-        hmacKeyExport: base64FromArray(hmacKeyExport),
-        aesKey: aesKey,
-        aesKeyExport: base64FromArray(aesKeyExport),
-    }
-}
 
 
 
@@ -228,4 +231,8 @@ function appendBuffer( buffer1, buffer2 ) {
     tmp.set( new Uint8Array( buffer1 ), 0 );
     tmp.set( new Uint8Array( buffer2 ), buffer1.byteLength );
     return tmp.buffer;
+}
+
+function isNodeJs() {
+    return Object.prototype.toString.call(typeof process !== 'undefined' ? process : 0) === '[object process]';
 }

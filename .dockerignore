@@ -2,4 +2,4 @@
 /testclient
 **/ready.txt
 ready.txt
-/node_modules
+**/node_modules
