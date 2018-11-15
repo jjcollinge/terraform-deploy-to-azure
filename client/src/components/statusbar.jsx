@@ -36,18 +36,19 @@ class StatusBar extends Component {
 
     componentWillMount() {
         let referrer = localStorage.getItem('referrer')
-        localStorage.removeItem('referrer')
-        if (referrer === null || referrer === "") {
+        if (!referrer) {
             return this.setState({ promptGit: true });
         }
+        localStorage.removeItem('referrer')
         let branch = extractBranchFromURL(referrer)
         this.props.setGit({
             url: referrer,
             branch: branch
-        })
+        });
     }
 
     render() {
+        let prompt = this.state.promptGit ? <GitModal setGit={this.onSetGit} /> : '';
         return (
             <Grid
                 container
@@ -55,7 +56,7 @@ class StatusBar extends Component {
                 justify="center"
                 alignItems="center"
                 className="statusbar">
-                {this.state.promptGit ? <GitModal setGit={this.onSetGit} /> : ''}
+                { prompt }
                 <Grid item xs={12} className="statusbar-gitinfo">
                     <a href={this.props.git.url} target="_blank" className="statusbar-giturl">{this.props.git.url}</a>
                     <span className="statusbar-gitbranch btn btn-sm">{this.props.git.branch}</span>

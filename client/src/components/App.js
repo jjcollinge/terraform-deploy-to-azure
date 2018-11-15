@@ -10,22 +10,45 @@ const wrapperStyle = {
   height: "100%"
 }
 
+const loadingStage = -1;
+const variablesStage = 0;
+const previewStage = 1;
+
 const App = (props) => {
   document.body.style = 'background: #3B3838;height: 100vh;margin: 0px;';
   document.getElementById("root").style.height = "100%"
+
+  let loading = <Loading />
+  let variablesForm = <VariablesForm />
+  let preview = <Preview />
+  let content;
+
+  if (props.git.url) {
+    switch (props.stage) {
+      case loadingStage:
+        content = loading;
+        break;
+      case variablesStage:
+        content = variablesForm;
+        break;
+      case previewStage:
+        content = preview;
+        break;
+    }
+  }
+
   return (
     <div style={wrapperStyle}>
       <NavBar />
       <StatusBar />
-      {props.stage === -1 ? <Loading /> : ''}
-      {props.stage ===  0 ? <VariablesForm /> : ''}
-      {props.stage >= 1 ? <Preview /> : ''}
+      { content }
     </div>
   );
 };
 
 const mapStateToProps = state => ({
   stage: state.stage,
+  git: state.git,
 })
 
 export default connect(mapStateToProps)(App);

@@ -1,7 +1,7 @@
 import { AuthenticationContext, adalFetch, withAdalLogin } from 'react-adal';
 
 export const adalConfig = {
-  clientId: 'c35f7790-574d-4da6-b6d0-be16dca2c51e',
+  clientId: '7e3f58e3-aeef-4738-b7bf-cc476e66a527',
   cacheLocation: 'localStorage',
 };
 

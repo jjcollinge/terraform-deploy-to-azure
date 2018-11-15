@@ -6,6 +6,7 @@ import { addVariable, TEXT_FIELD } from '../actions/variablesActions';
 import './loading.css';
 import logo from './logo.svg';
 import './../actions/stageActions';
+import { setGitCommit } from './../actions/gitActions';
 import hcltojson from 'hcl-to-json';
 
 const re = /(?:\.([^.]+))?$/;
@@ -28,6 +29,8 @@ const cloneRepo = async (w, url, dir) => {
         singleBranch: true,
         depth: 1,
     });
+    let commit = await w.git.log({dir: dir, depth: 1, ref: 'master'})
+    return commit[0].oid;
 }
 
 const extractHCLFiles = async (w, dir) => {
@@ -67,11 +70,17 @@ const convertHCLtoJSON = async (w, props, hclFile) => {
 const setVariables = async (props, variables) => {
     const keys = Object.keys(variables)
     for (const key of keys) {
+        let defaultValue = variables[key].default ? variables[key].default : null;
         props.addVariable({
             name: key,
+            value: defaultValue,
             type: TEXT_FIELD,
         });
     };
+    props.addVariable({
+        name: "azure_subscription_id",
+        type: TEXT_FIELD
+    });
 }
 
 const addOptions = async (props) => {
@@ -85,8 +94,10 @@ const addOptions = async (props) => {
             'Origin': 'localhost'
         })
     })
-    console.log("Subs")
-    console.log(subs)
+}
+
+async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 class Loading extends Component {
@@ -109,15 +120,15 @@ class Loading extends Component {
         this.interval = setInterval(() => this.tick(), 400);
     }
 
-    async componentDidUpdate() {
+    async componentDidMount() {
         let dir = "repo"
         const w = window;
+
+        // Give time to allow PFS to initialize
+        await sleep(1000);
+
         if (!w.pfs) {
             console.log("PFS not ready")
-            return
-        }
-        if (this.props.git.url === undefined) {
-            console.log("git info is not set")
             return
         }
         if (this.state.isCloningGit) {
@@ -134,7 +145,8 @@ class Loading extends Component {
                 let mergedFileExists = await w.pfs.exists(mergedFile)
                 if (!mergedFileExists) {
                     console.log("cloning git repo")
-                    await cloneRepo(w, this.props.git.url, dir)
+                    let commit = await cloneRepo(w, this.props.git.url, dir)
+                    this.props.setGitCommit(commit);
                     console.log("extracting hcl")
                     let hclFiles = await extractHCLFiles(w, dir)
                     console.log("merging hcl")
@@ -196,7 +208,10 @@ const mapDispatchToProps = dispatch => ({
     },
     addVariable: (v) => {
         dispatch(addVariable(v))
-    }
+    },
+    setGitCommit: (commit) => {
+        dispatch(setGitCommit(commit))
+    },
 });
 
 export default connect(mapStateToProps, mapDispatchToProps)(Loading);

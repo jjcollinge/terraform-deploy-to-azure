@@ -12,7 +12,7 @@ import chalk from 'chalk';
 import * as msRest from 'ms-rest-js';
 import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient';
 import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient';
-import { token, subscriptionId } from './creds.private';
+//import { token, subscriptionId } from './creds.private';
 import * as request from 'requestretry';
 import * as encryption from './encryption'
 import { ManagedServiceIdentityClient } from '../libs/arm-msi/esm/managedServiceIdentityClient'
@@ -20,6 +20,8 @@ import { ManagedServiceIdentityClient } from '../libs/arm-msi/esm/managedService
 const terminalStyle = {
     margin: "3% 0"
 }
+
+const defaultLocation = "eastus";
 
 let options = { enabled: true, level: 2 };
 const forcedChalk = new chalk.constructor(options);
@@ -33,7 +35,18 @@ class Preview extends Component {
         output: "Loading...",
         xterm: {},
         webSocket: null,
-        keys: {}
+        keys: {},
+        subscriptionId: "",
+    }
+
+    componentWillMount() {
+        let subId = this.props.variables.find(o => {
+            return o.name === 'azure_subscription_id';
+        });
+        if (subId === undefined) {
+            throw "azure_subscription_id is required!"
+        }
+        this.setState({ subscriptionId: subId.value });
     }
 
     async componentDidMount() {
@@ -54,13 +67,10 @@ class Preview extends Component {
             fontFamily: 'Roboto Mono',
             fontSize: 18,
             fontWeight: 500,
-            fontWeightBold: 500,
+            fontWeightBold: 1000,
         });
         await xterm.loadWebfontAndOpen(termElem);
-        xterm.writeln(forcedChalk.greenBright("Terraform Deploy to Azure\n\n"));
-        xterm.writeln("Variables:");
-        xterm.writeln("- - - - - - - - - - - - - -")
-
+        xterm.writeln(forcedChalk.greenBright("Terraform Deploy to Azure\n"));
         let aciContainerEnvironmentVars = [
             {
                 name: "AES_KEY",
@@ -72,6 +82,7 @@ class Preview extends Component {
             }
         ]
 
+        xterm.writeln(forcedChalk.yellowBright("~"))
         // Add Terraform variables specified in the form
         console.log(this.props.variables)
         this.props.variables.forEach(variable => {
@@ -84,7 +95,7 @@ class Preview extends Component {
                 value: value,
             });
         })
-        xterm.writeln("- - - - - - - - - - - - - -");
+        xterm.writeln(forcedChalk.yellowBright("~"))
         xterm.fit();
 
         this.setState({ xterm: xterm });
@@ -94,28 +105,29 @@ class Preview extends Component {
         }, 300);
 
         try {
+            let token = this.props.user.token;
+            let subscriptionId = this.state.subscriptionId;
             let guid = newGUID();
             let resourceGroupName = "tfdeploy-" + guid;
             let identityName = guid;
             await this.createResourceGroup(token,
                 subscriptionId,
                 resourceGroupName);
-            let res = await this.createManagedIdentity(token,
+            let msi = await this.createManagedIdentity(token,
                 subscriptionId,
                 resourceGroupName,
                 identityName);
             let identity = {
                 principalId: null,
-                tenantId: res.tenantId,
+                tenantId: msi.tenantId,
                 type: "UserAssigned",
                 userAssignedIdentities: {
-                    [res.id]: {
-                        clientId: res.clientId,
-                        principalId: res.principalId,
+                    [msi.id]: {
+                        clientId: msi.clientId,
+                        principalId: msi.principalId,
                     }
                 },
             }
-            console.log(identity)
             let ipAddress = await this.createACIInstance(token,
                 subscriptionId,
                 resourceGroupName,
@@ -125,7 +137,7 @@ class Preview extends Component {
                 this.props.git.commit,
                 aciContainerEnvironmentVars);
 
-            xterm.writeln("\r\nContainer starting @ " + ipAddress);
+            xterm.writeln("\r\nDeployment container started @ " + ipAddress);
 
             // Wait for the server to be alive
             await request({
@@ -158,7 +170,7 @@ class Preview extends Component {
 
             clearInterval(t);
 
-            xterm.writeln(forcedChalk.greenBright("\r\nConnected interactive terminal to Terraform container \n\n"));
+            xterm.writeln(forcedChalk.greenBright("\r\nConnected to interactive Terraform terminal\n\n"));
             xterm.writeln(forcedChalk.greenBright("\r\nuser@tfdeploy:") + forcedChalk.blueBright("/git") + "$ terraform apply \n\n");
 
         } catch (e) {
@@ -189,7 +201,7 @@ class Preview extends Component {
     createManagedIdentity = this.createManagedIdentity.bind(this);
 
     async createManagedIdentity(token, subscriptionId, resourceGroupName, name) {
-        this.state.xterm.writeln("\r\nCreating a new managed identity: '" + name + "'");
+        this.state.xterm.writeln("\r\nCreating deployment identity '" + name + "'");
         const creds = new msRest.TokenCredentials(token);
         const client = new ManagedServiceIdentityClient(creds, subscriptionId);
 
@@ -205,7 +217,7 @@ class Preview extends Component {
 
     async createResourceGroup(token, subscriptionId, name) {
         console.log(this.props.user.token);
-        this.state.xterm.writeln("\r\nCreating a resource group to contain Terraform ACI container: '" + name + "'");
+        this.state.xterm.writeln("\r\nCreating deployment resource group '" + name + "'");
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
@@ -221,7 +233,7 @@ class Preview extends Component {
 
     async deleteResourceGroup(token, subscriptionId, name) {
         console.log(this.props.user.token);
-        this.state.xterm.writeln("\r\nDeleting the resource group used by the Terraform ACI container");
+        this.state.xterm.writeln("\r\nDeleting deployment resource group '" + name + "'");
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
@@ -235,7 +247,7 @@ class Preview extends Component {
 
     async createACIInstance(token, subscriptionId, resourceGroup, identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let term = this.state.xterm;
-        term.writeln("\r\nStarting ACI Container for deployment ");
+        term.writeln("\r\nStarting deployment container");
 
         // let token = this.props.user.token;
         console.log(this.props.user.token);
@@ -418,11 +430,9 @@ async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function retryStrategy(err, response, body){
+function retryStrategy(err, response, body) {
     // retry the request if we had an error or if the response was a 'Bad Gateway'
     return err || response.statusCode !== 200;
 }
-
-const defaultLocation = "eastus";
 
 export default connect(mapStateToProps, mapDispatchToProps)(Preview);

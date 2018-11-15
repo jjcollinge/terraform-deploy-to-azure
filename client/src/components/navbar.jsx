@@ -21,14 +21,15 @@ class NavBar extends Component {
         // Acquire token for Azure
         let token = authContext.getCachedToken();
         if (!token) {
-            token = authContext.acquireToken("https://management.azure.com/", (err, token) => {
+            token = authContext.acquireToken("https://management.core.windows.net/", (err, token) => {
                 if (err || !token) {
-                    console.error("ADAL error acquiring token: " + err)
+                    throw "ADAL error acquiring token: " + err;
                 }
                 this.props.addToken(token)
-            })
+            });
+            return
         }
-
+        this.props.addToken(token)
     }
 
     render() {

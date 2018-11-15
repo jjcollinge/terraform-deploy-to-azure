@@ -16,6 +16,17 @@ const customStyles = {
     }
 };
 
+const isValidGitUrl = url => {
+    if (!url) {
+        return false
+    }
+    if (!url.includes("https://github.com/")) {
+        return false
+    }
+    // TODO: more validation
+    return true
+}
+
 class GitModal extends Component {
     constructor(props) {
         super();
@@ -48,8 +59,11 @@ class GitModal extends Component {
         event.preventDefault();
 
         let gitURL = document.getElementById("giturl").value;
-        console.log(gitURL)
-        // TODO: Validate git url
+        if (!isValidGitUrl(gitURL)) {
+            console.error("invalid Git URL")
+            document.getElementById("gitmodal-label").innerText = "Invalid Git URL";
+            return;
+        }
         this.setGit(gitURL)
         this.closeModal()
     }
@@ -65,7 +79,7 @@ class GitModal extends Component {
                     style={customStyles}>
                     <div className="gitmodal-title">
                         <h2>Please enter your Git repo URL</h2>
-                        <h5><i>https://github.com/username/repo</i></h5>
+                        <h5 id="gitmodal-label">https://github.com/username/repo</h5>
                     </div>
                     <form onSubmit={this.onSubmit} className="gitmodal-form">
                         <input id="giturl" type="text" placeholder="https://github.com/jjcollinge/tfexample" />

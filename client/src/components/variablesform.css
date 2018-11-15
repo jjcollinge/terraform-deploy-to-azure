@@ -15,6 +15,19 @@
     width: 80%;
 }
 
+.variablesform-field {
+    font-weight: bold;
+    margin-left: 10px;
+}
+
+.err {
+    color: #ff6700;
+}
+
+.warn {
+    color: #ff0033;
+}
+
 .variablesform-btn {
     margin-right: 10%;
     margin-top: 4%;

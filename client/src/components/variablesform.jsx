@@ -3,8 +3,21 @@ import { Field, reduxForm } from 'redux-form';
 import { Grid } from '@material-ui/core';
 import { connect } from 'react-redux';
 import './variablesform.css'
-import { setVariable } from '../actions/variablesActions';
+import { setVariable, TEXT_FIELD } from '../actions/variablesActions';
 import { incrementStage } from '../actions/stageActions';
+
+const required = value => value ? undefined : 'Required';
+
+const renderField = ({ input, label, type, meta: { touched, error, warning } }) => (
+    <div>
+        <label>{label}</label>
+        {touched && ((error && <span className="variablesform-field err">{error}</span>) ||
+            (warning && <span className="variablesform-field warn">{warning}</span>))}
+        <div>
+            <input {...input} placeholder={label} type={type} />
+        </div>
+    </div>
+);
 
 class VariablesForm extends Component {
 
@@ -13,7 +26,7 @@ class VariablesForm extends Component {
     async handlePlanSubmit(values) {
         for (var prop in values) {
             if (values.hasOwnProperty(prop)) {
-                this.props.setVariable(prop, values[prop])
+                this.props.setVariable(prop, values[prop]);
             }
         }
         this.props.incrementStage();
@@ -41,8 +54,7 @@ class VariablesForm extends Component {
                                 <Grid container
                                     direction="column"
                                     className="variablesform-field">
-                                    <label>{v.name}</label>
-                                    <Field name={v.name} component="input" />
+                                    <Field name={v.name} component={renderField} type="text" label={v.name} validate={[required]} />
                                 </Grid>
                             </Grid>
                         )}
@@ -61,9 +73,16 @@ class VariablesForm extends Component {
     }
 }
 
-const mapStateToProps = state => ({
-    variables: state.variables,
-});
+const mapStateToProps = (state) => {
+    let initialValues = {}
+    state.variables.map((v, i) => {
+        initialValues[v.name] = v.value
+    });
+    return {
+        variables: state.variables,
+        initialValues: initialValues,
+    };
+}
 
 const mapDispatchToProps = dispatch => ({
     setVariable: (name, value) => {
@@ -74,4 +93,8 @@ const mapDispatchToProps = dispatch => ({
     }
 });
 
-export default connect(mapStateToProps, mapDispatchToProps)(reduxForm({ form: 'variables' })(VariablesForm))
+export default connect(mapStateToProps, mapDispatchToProps)(
+    reduxForm({
+        form: 'variables',
+        enableReinitialize: true,
+    })(VariablesForm))
