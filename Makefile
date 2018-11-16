@@ -1,5 +1,5 @@
 phony: server-docker-build
 
 server-docker-build:
-	docker build -t lawrencegripper/tfdeployer:dev -f ./server/Dockerfile .
-	docker push lawrencegripper/tfdeployer:dev
+	docker build -t dotjson/tfdeployer:dev -f ./server/Dockerfile .
+	docker push dotjson/tfdeployer:dev

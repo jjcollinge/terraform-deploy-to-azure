@@ -10,12 +10,12 @@ import './terraformTerminal.css';
 import * as WebfontLoader from 'xterm-webfont'
 import chalk from 'chalk';
 import * as msRest from 'ms-rest-js';
-import { ContainerInstanceManagementClient } from '../libs/azure-containerinstance/esm/containerInstanceManagementClient';
+import { ContainerInstanceManagementClient } from '../libs/arm-containerinstance/esm/containerInstanceManagementClient';
 import { ResourceManagementClient } from '../libs/arm-resources/esm/resourceManagementClient';
-//import { token, subscriptionId } from './creds.private';
+import { ManagedServiceIdentityClient } from '../libs/arm-msi/esm/managedServiceIdentityClient'
+import { AuthorizationManagementClient } from '../libs/arm-authorization/esm/authorizationManagementClient';
 import * as request from 'requestretry';
 import * as encryption from './encryption'
-import { ManagedServiceIdentityClient } from '../libs/arm-msi/esm/managedServiceIdentityClient'
 
 const terminalStyle = {
     margin: "3% 0"
@@ -24,10 +24,13 @@ const terminalStyle = {
 const defaultLocation = "eastus";
 
 let options = { enabled: true, level: 2 };
-const forcedChalk = new chalk.constructor(options);
+const colors = new chalk.constructor(options);
 
 const newGUID = () => {
-    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 }
 
 class TerraformTerminal extends Component {
@@ -37,6 +40,7 @@ class TerraformTerminal extends Component {
         webSocket: null,
         keys: {},
         subscriptionId: "",
+        resourceGroupName: "",
     }
 
     componentWillMount() {
@@ -47,6 +51,35 @@ class TerraformTerminal extends Component {
             throw "azure_subscription_id is required!"
         }
         this.setState({ subscriptionId: subId.value });
+    }
+
+    header = this.header.bind(this);
+
+    header(msg) {
+        console.log(`header: ${msg}`);
+        this.state.xterm.writeln(colors.greenBright.bold.underline(`\r\n ${msg}`));
+    }
+
+    info = this.info.bind(this);
+
+    info(msg) {
+        console.log(`info: ${msg}`);
+        this.state.xterm.writeln(`\r\n ~ ${msg}`);
+    }
+
+    warn = this.warn.bind(this);
+
+    warn(msg) {
+        console.log(`warn: ${msg}`);
+        this.state.xterm.writeln(colors.yellowBright(`\r\n ! ${msg}`));
+    }
+
+    err = this.err.bind(this);
+
+    err(msg) {
+        console.error(`error: ${msg}`);
+        let skull = "☠️";
+        this.state.xterm.writeln(colors.redBright(`\r\n ${skull} ${msg}`));
     }
 
     async componentDidMount() {
@@ -70,7 +103,11 @@ class TerraformTerminal extends Component {
             fontWeightBold: 1000,
         });
         await xterm.loadWebfontAndOpen(termElem);
-        xterm.writeln(forcedChalk.greenBright("Terraform Deploy to Azure\n"));
+        this.setState({ xterm: xterm }, () => {
+            this.header("Deploy to Azure with Terraform");
+        });
+        xterm.fit();
+
         let aciContainerEnvironmentVars = [
             {
                 name: "AES_KEY",
@@ -81,32 +118,30 @@ class TerraformTerminal extends Component {
                 secureValue: keys.hmacKeyExport
             }
         ]
-
-        xterm.writeln(forcedChalk.yellowBright("~"))
         // Add Terraform variables specified in the form
-        console.log(this.props.variables)
         this.props.variables.forEach(variable => {
-            console.log(variable);
-            let value = variable.value ? variable.value : '""';
-            xterm.writeln(`${variable.name} = ${value}`);
-
+            let value = variable.value ? variable.value : '""';     //TODO: Not all vars may be strings
             aciContainerEnvironmentVars.push({
                 name: "TF_VAR_" + variable.name,
                 value: value,
             });
         })
-        xterm.writeln(forcedChalk.yellowBright("~"))
-        xterm.fit();
-
-        this.setState({ xterm: xterm });
 
         let t = setInterval(function () {
             xterm.write(".");
         }, 300);
 
         try {
-            let token = this.props.user.token;
+            this.info("Starting deployment process")
+
+            //let token = this.props.user.token;
+            let token = this.props.variables.find(o => o.name == 'azure_token').value;  //TODO: This will come from user once AAD is sorted
             let subscriptionId = this.state.subscriptionId;
+            aciContainerEnvironmentVars.push({
+                name: "ARM_SUBSCRIPTION_ID",
+                value: subscriptionId,
+            });
+
             let guid = newGUID();
             let resourceGroupName = "tfdeploy-" + guid;
             let identityName = guid;
@@ -117,17 +152,24 @@ class TerraformTerminal extends Component {
                 subscriptionId,
                 resourceGroupName,
                 identityName);
+
+            // Sleep long enough for AAD to become consistent
+            this.warn("Waiting for AAD update to propogate")
+            await sleep(60000);
+
+            await this.grantIdentityPermission(token, subscriptionId, msi);
+
+            // Sleep long enough for AAD to become consistent
+            this.warn("Waiting for AAD update to propogate")
+            await sleep(10000);
+
             let identity = {
-                principalId: null,
-                tenantId: msi.tenantId,
-                type: "UserAssigned",
+                type: 'UserAssigned',
                 userAssignedIdentities: {
-                    [msi.id]: {
-                        clientId: msi.clientId,
-                        principalId: msi.principalId,
-                    }
+                    [msi.id]: {}
                 },
             }
+
             let ipAddress = await this.createACIInstance(token,
                 subscriptionId,
                 resourceGroupName,
@@ -137,7 +179,7 @@ class TerraformTerminal extends Component {
                 this.props.git.commit,
                 aciContainerEnvironmentVars);
 
-            xterm.writeln("\r\nDeployment container started @ " + ipAddress);
+            this.info(`Deployment container started @ ${ipAddress}`);
 
             // Wait for the server to be alive
             await request({
@@ -151,15 +193,13 @@ class TerraformTerminal extends Component {
                 retryStrategy: retryStrategy // retry anything that isn't a 200
             });
 
-            // let ipAddress = "localhost";
-
             // Connect and provide a func to execute when connection lost
             await this.connect(ipAddress, async e => {
-                let skull = "☠️";
-                xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, retrying in 8 seconds`));
-                await sleep(12000);
+                let timeout = 12000;
+                this.warn(`Connection closed, retrying in ${timeout/1000} seconds`);
+                await sleep(timeout);
                 await this.connect(ipAddress, e => {
-                    xterm.writeln(forcedChalk.red(`\r\n\r\n Connection closed ${skull}, giving up`));
+                    this.err(`Connection closed, giving up`);
                 });
 
                 xterm.attach(this.state.webSocket);
@@ -170,12 +210,12 @@ class TerraformTerminal extends Component {
 
             clearInterval(t);
 
-            xterm.writeln(forcedChalk.greenBright("\r\nConnected to interactive Terraform terminal\n\n"));
-            xterm.writeln(forcedChalk.greenBright("\r\nuser@tfdeploy:") + forcedChalk.blueBright("/git") + "$ terraform apply \n\n");
+            this.info("Connected to interactive Terraform terminal")
+            xterm.writeln(colors.greenBright("\r\nuser@tfdeploy:") + colors.blueBright("/git") + "$ terraform apply \n\n");
 
         } catch (e) {
             console.log(e);
-            xterm.writeln("An error occurred while connecting to the Terraform container: " + e.toString());
+            this.err("An error occurred while connecting to the deployment container: " + e.toString())
         }
         clearInterval(t);
     }
@@ -201,7 +241,7 @@ class TerraformTerminal extends Component {
     createManagedIdentity = this.createManagedIdentity.bind(this);
 
     async createManagedIdentity(token, subscriptionId, resourceGroupName, name) {
-        this.state.xterm.writeln("\r\nCreating deployment identity '" + name + "'");
+        this.info(`Creating deployment identity '${name}'`);
         const creds = new msRest.TokenCredentials(token);
         const client = new ManagedServiceIdentityClient(creds, subscriptionId);
 
@@ -209,15 +249,31 @@ class TerraformTerminal extends Component {
             location: defaultLocation,
         });
 
-        console.log(identity);
         return identity
+    }
+
+    grantIdentityPermission = this.grantIdentityPermission.bind(this);
+
+    async grantIdentityPermission(token, subscriptionId, msi) {
+        this.info(`Granting identity permission to ARM`);
+
+        console.log(msi)
+        console.log(subscriptionId)
+        const creds = new msRest.TokenCredentials(token);
+        const client = new AuthorizationManagementClient(creds, subscriptionId);
+
+        let roleDefinitionId = "b24988ac-6180-42a0-ab88-20f7382dd24c";  // Contributor
+        let roleAssignmentName = newGUID();
+        await client.roleAssignments.create(`subscriptions/${subscriptionId}`, roleAssignmentName, {
+            principalId: msi.principalId,
+            roleDefinitionId: `/subscriptions/${subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/${roleDefinitionId}`,
+        })
     }
 
     createResourceGroup = this.createResourceGroup.bind(this);
 
     async createResourceGroup(token, subscriptionId, name) {
-        console.log(this.props.user.token);
-        this.state.xterm.writeln("\r\nCreating deployment resource group '" + name + "'");
+        this.info(`Creating deployment resource group '${name}'`)
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
@@ -225,21 +281,26 @@ class TerraformTerminal extends Component {
             location: defaultLocation,
         });
 
-        console.log(group)
+        this.setState({ resourceGroupName: name })
+
         return
     }
 
     deleteResourceGroup = this.deleteResourceGroup.bind(this);
 
-    async deleteResourceGroup(token, subscriptionId, name) {
-        console.log(this.props.user.token);
-        this.state.xterm.writeln("\r\nDeleting deployment resource group '" + name + "'");
+    async deleteResourceGroup(token, subscriptionId) {
+        if (this.state.resourceGroupName === "") {
+            // resource group not created yet
+            return
+        }
+
+        let name = this.state.resourceGroupName;
+        this.info(`Deleting deployment resource group '${name}'\n\n`)
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
         let group = await client.resourceGroups.delete(name);
 
-        console.log(group)
         return
     }
 
@@ -247,12 +308,12 @@ class TerraformTerminal extends Component {
 
     async createACIInstance(token, subscriptionId, resourceGroup, identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let term = this.state.xterm;
-        term.writeln("\r\nStarting deployment container");
+        this.info("Starting deployment container")
 
-        // let token = this.props.user.token;
-        console.log(this.props.user.token);
         const creds = new msRest.TokenCredentials(token);
-        const client = new ContainerInstanceManagementClient(creds, subscriptionId);
+        const client = new ContainerInstanceManagementClient(creds, subscriptionId, {
+            apiVersion: "2018-10-01"
+        });
 
         let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
             location: defaultLocation,
@@ -281,7 +342,7 @@ class TerraformTerminal extends Component {
             containers: [
                 {
                     name: "terraform-deployer",
-                    image: "lawrencegripper/tfdeployer:dev",
+                    image: "dotjson/tfdeployer:dev",
                     livenessProbe: {
                         exec: {
                             command: ["echo", "1"]
@@ -312,6 +373,8 @@ class TerraformTerminal extends Component {
                         }
                     }
                 }],
+        }, {
+            apiVersion: "2018-10-01"
         })
 
         while (true) {
@@ -319,7 +382,7 @@ class TerraformTerminal extends Component {
             console.log(existing);
             if (existing.containers[0].instanceView.currentState.state !== "Running") {
                 if (existing.containers[0].instanceView.currentState.detailStatus === "Completed" || existing.containers[0].instanceView.currentState.detailStatus === "Terminated") {
-                    term.writeln("Container instance already exited :(");
+                    this.err("Container instance already exited :(")
                     throw "failed"
                 }
                 await sleep(3000);
@@ -327,7 +390,7 @@ class TerraformTerminal extends Component {
             }
             if (existing.ipAddress != null) {
                 if (existing.ipAddress.ip === undefined) {
-                    term.writeln("IP Address is undefined, something has gone wrong");
+                    this.err("IP Address is undefined, something has gone wrong")
                     throw "failed"
                 }
                 return existing.ipAddress.ip;
@@ -365,7 +428,7 @@ class TerraformTerminal extends Component {
 
                                 // Handle the server exiting, cleanup the resource group
                                 if (result.message === "command exited") {
-                                    this.state.xterm.writeln("\r\n" + forcedChalk.blueBright("The Terraform process exited: cleaning up...."));
+                                    this.state.xterm.writeln("\r\n" + colors.blueBright("The Terraform process exited: cleaning up...."));
                                     await this.deleteResourceGroup();
                                     return;
                                 }

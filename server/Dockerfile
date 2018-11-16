@@ -1,5 +1,5 @@
 # Do NPM install in a seperate container
-# due to it's need for lots of stuff that bloats out the 
+# due to it's need for lots of stuff that bloats out the
 # the container size
 FROM hashicorp/terraform:light
 WORKDIR /app
@@ -14,4 +14,5 @@ WORKDIR /app
 COPY --from=0 /app/ .
 RUN apk add --update nodejs
 RUN chmod +x ./server/server-entrypoint.sh
+ENV ARM_USE_MSI true
 ENTRYPOINT [ "sh", "-f", "/app/server/server-entrypoint.sh" ]
