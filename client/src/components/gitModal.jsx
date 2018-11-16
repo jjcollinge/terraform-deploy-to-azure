@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import Modal from 'react-modal';
-import './gitmodal.css'
+import './gitModal.css'
 
 const customStyles = {
     content: {

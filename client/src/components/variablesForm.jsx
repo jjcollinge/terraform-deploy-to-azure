@@ -2,7 +2,7 @@ import React, { Component } from 'react';
 import { Field, reduxForm } from 'redux-form';
 import { Grid } from '@material-ui/core';
 import { connect } from 'react-redux';
-import './variablesform.css'
+import './variablesForm.css'
 import { setVariable, TEXT_FIELD } from '../actions/variablesActions';
 import { incrementStage } from '../actions/stageActions';
 

@@ -6,7 +6,7 @@ import { Terminal } from 'xterm';
 import * as fit from 'xterm/lib/addons/fit/fit';
 import * as attach from 'xterm/lib/addons/attach/attach';
 import style from 'xterm/dist/xterm.css';
-import './preview.css';
+import './terraformTerminal.css';
 import * as WebfontLoader from 'xterm-webfont'
 import chalk from 'chalk';
 import * as msRest from 'ms-rest-js';
@@ -30,7 +30,7 @@ const newGUID = () => {
     return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
-class Preview extends Component {
+class TerraformTerminal extends Component {
     state = {
         output: "Loading...",
         xterm: {},
@@ -435,4 +435,4 @@ function retryStrategy(err, response, body) {
     return err || response.statusCode !== 200;
 }
 
-export default connect(mapStateToProps, mapDispatchToProps)(Preview);
+export default connect(mapStateToProps, mapDispatchToProps)(TerraformTerminal);

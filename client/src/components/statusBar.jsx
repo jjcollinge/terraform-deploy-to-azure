@@ -1,19 +1,29 @@
 import React, { Component } from 'react';
 import { Grid } from '@material-ui/core';
-import './statusbar.css';
-import GitModal from './gitmodal.jsx';
+import './statusBar.css';
+import GitModal from './gitModal.jsx';
 import { connect } from 'react-redux';
 import { setGit } from '../actions/gitActions';
 import { incrementStage } from '../actions/stageActions';
 
 const defaultGitBranch = "master"
 
-const extractBranchFromURL = (url) => {
-    let branch = url.split("tree/").pop(); // Warning: will only work with standard GitHub urls
+const parseBranch = (url) => {
+    // Warning: will only work with standard GitHub urls
+    let branch = url.split("tree/").pop();
     if (branch === url) {
         branch = defaultGitBranch;
     }
     return branch;
+}
+
+const parseBaseRepo = (url) => {
+    // Warning: will only work with standard GitHub urls
+    let branch = url.indexOf("/tree")
+    if (branch !== -1) {
+        return url.substring(0, branch)
+    }
+    return url
 }
 
 class StatusBar extends Component {
@@ -24,10 +34,12 @@ class StatusBar extends Component {
     onSetGit = this.onSetGit.bind(this);
 
     onSetGit(url) {
-        let branch = extractBranchFromURL(url)
+        let branch = parseBranch(url);
+        let base = parseBaseRepo(url);
         this.props.setGit({
             url: url,
-            branch: branch
+            branch: branch,
+            base: base,
         });
         this.setState({
             promptGit: false
@@ -36,19 +48,20 @@ class StatusBar extends Component {
 
     componentWillMount() {
         let referrer = localStorage.getItem('referrer')
+
+        // Referrer not set, prompt user
         if (!referrer) {
             return this.setState({ promptGit: true });
         }
+
+        // Referrer set, use it.
         localStorage.removeItem('referrer')
-        let branch = extractBranchFromURL(referrer)
-        this.props.setGit({
-            url: referrer,
-            branch: branch
-        });
+        this.onSetGit(referrer);
     }
 
     render() {
         let prompt = this.state.promptGit ? <GitModal setGit={this.onSetGit} /> : '';
+
         return (
             <Grid
                 container
@@ -58,7 +71,7 @@ class StatusBar extends Component {
                 className="statusbar">
                 { prompt }
                 <Grid item xs={12} className="statusbar-gitinfo">
-                    <a href={this.props.git.url} target="_blank" className="statusbar-giturl">{this.props.git.url}</a>
+                    <a href={this.props.git.url} target="_blank" className="statusbar-giturl">{this.props.git.base}</a>
                     <span className="statusbar-gitbranch btn btn-sm">{this.props.git.branch}</span>
                 </Grid>
             </Grid>

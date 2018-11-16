@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import Stages from './stages';
-import './navbar.css';
+import './navBar.css';
 import { Grid } from '@material-ui/core'
 import { connect } from 'react-redux';
 import { setUser, updateUserToken } from '../actions/userActions';

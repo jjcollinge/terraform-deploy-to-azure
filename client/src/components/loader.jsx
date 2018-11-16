@@ -1,12 +1,12 @@
 import React, { Component } from 'react';
 import { Grid } from '@material-ui/core'
 import { connect } from 'react-redux';
-import { incrementStage } from './../actions/stageActions';
+import { incrementStage } from '../actions/stageActions';
 import { addVariable, TEXT_FIELD } from '../actions/variablesActions';
-import './loading.css';
+import './loader.css';
 import logo from './logo.svg';
-import './../actions/stageActions';
-import { setGitCommit } from './../actions/gitActions';
+import '../actions/stageActions';
+import { setGitCommit } from '../actions/gitActions';
 import hcltojson from 'hcl-to-json';
 
 const re = /(?:\.([^.]+))?$/;
@@ -19,17 +19,17 @@ const bin2string = (array) => {
     return result;
 }
 
-const cloneRepo = async (w, url, dir) => {
+const cloneRepo = async (w, url, branch, dir) => {
     await w.pfs.mkdir(dir)
     await w.git.clone({
         dir,
         corsProxy: 'https://cors.isomorphic-git.org',
         url: url,
-        ref: 'master',
+        ref: branch,
         singleBranch: true,
         depth: 1,
     });
-    let commit = await w.git.log({dir: dir, depth: 1, ref: 'master'})
+    let commit = await w.git.log({ dir: dir, depth: 1, ref: branch })
     return commit[0].oid;
 }
 
@@ -100,12 +100,10 @@ async function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-class Loading extends Component {
+class Loader extends Component {
     state = {
         text: "Loading",
         numDots: 1,
-        hasClonedGit: false,
-        isCloningGit: false,
     };
 
     tick = this.tick.bind(this);
@@ -124,54 +122,49 @@ class Loading extends Component {
         let dir = "repo"
         const w = window;
 
-        // Give time to allow PFS to initialize
-        await sleep(1000);
+        let attempts = 0;
+        while (attempts < 3 && !w.pfs) {
+            console.log("Waiting for PFS to initialize")
+            await sleep(1000);
+        }
+        if (attempts >= 3) {
+            throw "PFS did not initialize within sufficent time threshold";
+        }
 
-        if (!w.pfs) {
-            console.log("PFS not ready")
-            return
-        }
-        if (this.state.isCloningGit) {
-            console.log("already cloning git")
-            return
-        }
-        if (this.state.hasClonedGit) {
-            console.log("has cloned git")
-            return
-        }
-        this.setState({ isCloningGit: true }, async () => {
-            try {
-                let mergedFile = 'merged.tf'
-                let mergedFileExists = await w.pfs.exists(mergedFile)
-                if (!mergedFileExists) {
-                    console.log("cloning git repo")
-                    let commit = await cloneRepo(w, this.props.git.url, dir)
-                    this.props.setGitCommit(commit);
-                    console.log("extracting hcl")
-                    let hclFiles = await extractHCLFiles(w, dir)
-                    console.log("merging hcl")
-                    await mergeHCLFiles(w, dir, hclFiles, mergedFile)
-                    console.log("convert hcl to json")
-                    let json = await convertHCLtoJSON(w, this.props, mergedFile)
-                    //await addOptions(this.props)
-                    console.log("setting variables")
-                    await setVariables(this.props, json.variable)
-                    var _this = this;
-                    this.setState({ hasClonedGit: true }, () => {
-                        console.log("incrementing stage")
-                        _this.props.incrementStage();
-                        _this.componentWillUnmount();
-                    });
-                }
-            } catch (err) {
-                clearInterval(this.interval);
-                this.setState({
-                    text: `Error: ${err.message}`,
-                    numDots: 0,
-                });
-                console.error(err); // TODO: Handle errors
+        try {
+            let mergedFile = 'merged.tf'
+            let mergedFileExists = await w.pfs.exists(mergedFile)
+            if (!mergedFileExists) {
+                console.log(`cloning git repo ${this.props.git.base} @ branch ${this.props.git.branch}`)
+                let commit = await cloneRepo(w, this.props.git.base, this.props.git.branch, dir)
+                this.props.setGitCommit(commit);
+
+                console.log("extracting hcl")
+                let hclFiles = await extractHCLFiles(w, dir)
+
+                console.log("merging hcl")
+                await mergeHCLFiles(w, dir, hclFiles, mergedFile)
+
+                console.log("convert hcl to json")
+                let json = await convertHCLtoJSON(w, this.props, mergedFile)
+
+                //await addOptions(this.props)
+
+                console.log("setting variables")
+                await setVariables(this.props, json.variable)
+
+                console.log("incrementing stage")
+                this.props.incrementStage();
+                this.componentWillUnmount();
             }
-        });
+        } catch (err) {
+            clearInterval(this.interval);
+            this.setState({
+                text: `Error: ${err.message}`,
+                numDots: 0,
+            });
+            console.error(err); // TODO: Handle errors
+        }
     }
 
     componentWillUnmount() {
@@ -214,4 +207,4 @@ const mapDispatchToProps = dispatch => ({
     },
 });
 
-export default connect(mapStateToProps, mapDispatchToProps)(Loading);
+export default connect(mapStateToProps, mapDispatchToProps)(Loader);

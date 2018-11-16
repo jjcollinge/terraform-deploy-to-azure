@@ -7,7 +7,7 @@ import {
     createStore, combineReducers
 } from 'redux';
 import { reducer as formReducer } from 'redux-form'
-import App from './components/App';
+import App from './components/app';
 import stageReducer from './reducers/stageReducer';
 import variablesReducer  from './reducers/variablesReducer';
 import userReducer from './reducers/userReducer';
@@ -35,11 +35,14 @@ const allReducers = combineReducers({
 //     applyMiddleware(thunk),
 // );
 
+/* eslint-disable no-underscore-dangle */
 const store = createStore(
     allReducers,
     initialState,
     // allStoreEnhancers,
+    window.__REDUX_DEVTOOLS_EXTENSION__ && window.__REDUX_DEVTOOLS_EXTENSION__()
 );
+/* eslint-enable */
 
 ReactDOM.render(
     <Provider store={store}>

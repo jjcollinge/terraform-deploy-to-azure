@@ -1,38 +1,38 @@
 import React from 'react';
 import { connect } from 'react-redux';
-import NavBar from './navbar'
-import StatusBar from './statusbar'
-import Loading from './loading'
-import VariablesForm from './variablesform'
-import Preview from './preview'
+import NavBar from './navBar'
+import StatusBar from './statusBar'
+import Loader from './loader'
+import VariablesForm from './variablesForm'
+import TerraformTerminal from './terraformTerminal'
 
 const wrapperStyle = {
   height: "100%"
 }
 
 const loadingStage = -1;
-const variablesStage = 0;
+const varFormStage = 0;
 const previewStage = 1;
+const deployStage = 2;
 
 const App = (props) => {
   document.body.style = 'background: #3B3838;height: 100vh;margin: 0px;';
   document.getElementById("root").style.height = "100%"
 
-  let loading = <Loading />
-  let variablesForm = <VariablesForm />
-  let preview = <Preview />
   let content;
 
+  // Pick which screen to render depending
+  // on the current stage.
   if (props.git.url) {
     switch (props.stage) {
       case loadingStage:
-        content = loading;
+        content = <Loader />;
         break;
-      case variablesStage:
-        content = variablesForm;
+      case varFormStage:
+        content = <VariablesForm />;
         break;
-      case previewStage:
-        content = preview;
+      case previewStage || deployStage:
+        content = <TerraformTerminal />;
         break;
     }
   }
