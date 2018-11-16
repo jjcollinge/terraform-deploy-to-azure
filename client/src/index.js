@@ -12,6 +12,9 @@ let selfRef = document.referrer.includes(window.location.href)
 let loginRedirect = document.referrer.includes("login.microsoftonline.com")
 if (!ref && !selfRef && !loginRedirect) {
   localStorage.setItem('referrer', document.referrer);
+} else {
+  // Clear referrer as we need to prompt user
+  localStorage.removeItem('referrer')
 }
 
 runWithAdal(authContext, () => {

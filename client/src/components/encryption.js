@@ -15,6 +15,7 @@ export async function encryptAndSign(message, keys) {
         sig: signature
     }
 };
+
 export async function validateAndDecrypt(message, keys) {
     try {
         const ivAndBody = base64FromArray(appendBuffer(arrayFromBase64(message.body), arrayFromBase64(message.iv)));
@@ -36,6 +37,7 @@ export async function validateAndDecrypt(message, keys) {
         }
     }
 };
+
 export async function generateKeys() {
     var hmacKey = await window.crypto.subtle.generateKey(
         {
