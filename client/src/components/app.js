@@ -12,8 +12,6 @@ const wrapperStyle = {
 
 const loadingStage = -1;
 const varFormStage = 0;
-const previewStage = 1;
-const deployStage = 2;
 
 const App = (props) => {
   document.body.style = 'background: #3B3838;height: 100vh;margin: 0px;';
@@ -31,9 +29,8 @@ const App = (props) => {
       case varFormStage:
         content = <VariablesForm />;
         break;
-      case previewStage || deployStage:
+      default:
         content = <TerraformTerminal />;
-        break;
     }
   }
 
@@ -41,7 +38,7 @@ const App = (props) => {
     <div style={wrapperStyle}>
       <NavBar />
       <StatusBar />
-      { content }
+      {content}
     </div>
   );
 };

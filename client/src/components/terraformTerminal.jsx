@@ -27,10 +27,10 @@ let options = { enabled: true, level: 2 };
 const colors = new chalk.constructor(options);
 
 const newGUID = () => {
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
 
 class TerraformTerminal extends Component {
@@ -41,6 +41,7 @@ class TerraformTerminal extends Component {
         keys: {},
         subscriptionId: "",
         resourceGroupName: "",
+        token: "",
     }
 
     componentWillMount() {
@@ -136,28 +137,24 @@ class TerraformTerminal extends Component {
 
             //let token = this.props.user.token;
             let token = this.props.variables.find(o => o.name == 'azure_token').value;  //TODO: This will come from user once AAD is sorted
-            let subscriptionId = this.state.subscriptionId;
+            this.setState({ token: token });
+
             aciContainerEnvironmentVars.push({
                 name: "ARM_SUBSCRIPTION_ID",
-                value: subscriptionId,
+                value: this.state.subscriptionId,
             });
 
             let guid = newGUID();
             let resourceGroupName = "tfdeploy-" + guid;
             let identityName = guid;
-            await this.createResourceGroup(token,
-                subscriptionId,
-                resourceGroupName);
-            let msi = await this.createManagedIdentity(token,
-                subscriptionId,
-                resourceGroupName,
-                identityName);
+            await this.createResourceGroup(resourceGroupName);
+            let msi = await this.createManagedIdentity(identityName);
 
             // Sleep long enough for AAD to become consistent
             this.warn("Waiting for AAD update to propogate")
             await sleep(60000);
 
-            await this.grantIdentityPermission(token, subscriptionId, msi);
+            await this.grantIdentityPermission(msi);
 
             // Sleep long enough for AAD to become consistent
             this.warn("Waiting for AAD update to propogate")
@@ -170,9 +167,7 @@ class TerraformTerminal extends Component {
                 },
             }
 
-            let ipAddress = await this.createACIInstance(token,
-                subscriptionId,
-                resourceGroupName,
+            let ipAddress = await this.createACIInstance(
                 identity,
                 guid,
                 this.props.git.url,
@@ -196,7 +191,7 @@ class TerraformTerminal extends Component {
             // Connect and provide a func to execute when connection lost
             await this.connect(ipAddress, async e => {
                 let timeout = 12000;
-                this.warn(`Connection closed, retrying in ${timeout/1000} seconds`);
+                this.warn(`Connection closed, retrying in ${timeout / 1000} seconds`);
                 await sleep(timeout);
                 await this.connect(ipAddress, e => {
                     this.err(`Connection closed, giving up`);
@@ -240,8 +235,10 @@ class TerraformTerminal extends Component {
 
     createManagedIdentity = this.createManagedIdentity.bind(this);
 
-    async createManagedIdentity(token, subscriptionId, resourceGroupName, name) {
+    async createManagedIdentity(name) {
+        let { subscriptionId, token, resourceGroupName } = this.state;
         this.info(`Creating deployment identity '${name}'`);
+
         const creds = new msRest.TokenCredentials(token);
         const client = new ManagedServiceIdentityClient(creds, subscriptionId);
 
@@ -249,16 +246,15 @@ class TerraformTerminal extends Component {
             location: defaultLocation,
         });
 
-        return identity
+        return identity;
     }
 
     grantIdentityPermission = this.grantIdentityPermission.bind(this);
 
-    async grantIdentityPermission(token, subscriptionId, msi) {
+    async grantIdentityPermission(msi) {
+        let { subscriptionId, token } = this.state;
         this.info(`Granting identity permission to ARM`);
 
-        console.log(msi)
-        console.log(subscriptionId)
         const creds = new msRest.TokenCredentials(token);
         const client = new AuthorizationManagementClient(creds, subscriptionId);
 
@@ -272,7 +268,9 @@ class TerraformTerminal extends Component {
 
     createResourceGroup = this.createResourceGroup.bind(this);
 
-    async createResourceGroup(token, subscriptionId, name) {
+    async createResourceGroup(name) {
+        let { subscriptionId, token } = this.state;
+
         this.info(`Creating deployment resource group '${name}'`)
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
@@ -288,26 +286,26 @@ class TerraformTerminal extends Component {
 
     deleteResourceGroup = this.deleteResourceGroup.bind(this);
 
-    async deleteResourceGroup(token, subscriptionId) {
-        if (this.state.resourceGroupName === "") {
+    async deleteResourceGroup() {
+        let { subscriptionId, token, resourceGroupName } = this.state;
+        if (resourceGroupName === "") {
             // resource group not created yet
             return
         }
 
-        let name = this.state.resourceGroupName;
-        this.info(`Deleting deployment resource group '${name}'\n\n`)
+        this.info(`Deleting deployment resource group '${resourceGroupName}'\n\n`)
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
-        let group = await client.resourceGroups.delete(name);
+        let group = await client.resourceGroups.delete(resourceGroupName);
 
         return
     }
 
     createACIInstance = this.createACIInstance.bind(this);
 
-    async createACIInstance(token, subscriptionId, resourceGroup, identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
-        let term = this.state.xterm;
+    async createACIInstance(identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
+        let { subscriptionId, token, resourceGroupName } = this.state;
         this.info("Starting deployment container")
 
         const creds = new msRest.TokenCredentials(token);
@@ -315,7 +313,7 @@ class TerraformTerminal extends Component {
             apiVersion: "2018-10-01"
         });
 
-        let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroup, containerGroupName, {
+        let containerGroupCreated = await client.containerGroups.createOrUpdate(resourceGroupName, containerGroupName, {
             location: defaultLocation,
             osType: "linux",
             identity: identity,
@@ -374,11 +372,11 @@ class TerraformTerminal extends Component {
                     }
                 }],
         }, {
-            apiVersion: "2018-10-01"
-        })
+                apiVersion: "2018-10-01"
+            })
 
         while (true) {
-            let existing = await client.containerGroups.get(resourceGroup, containerGroupName);
+            let existing = await client.containerGroups.get(resourceGroupName, containerGroupName);
             console.log(existing);
             if (existing.containers[0].instanceView.currentState.state !== "Running") {
                 if (existing.containers[0].instanceView.currentState.detailStatus === "Completed" || existing.containers[0].instanceView.currentState.detailStatus === "Terminated") {
@@ -402,7 +400,7 @@ class TerraformTerminal extends Component {
     connect = this.connect.bind(this);
 
     async connect(address, onClose) {
-        let term = this.state.xterm;
+        let buff = [];
 
         return new Promise((resolve, reject) => {
             // Second connection suceeds
@@ -448,7 +446,16 @@ class TerraformTerminal extends Component {
                 },
                 // Encrypt before sending
                 send: async (data) => {
-                    console.log("sending" + data);
+                    // TODO: Optimize this
+                    console.log("Buffer " + buff)
+                    if (buff.length === 3) {
+                        buff.shift();
+                    }
+                    buff.push(data);
+                    if (buff.join("") === "yes") {
+                        this.props.incrementStage();
+                    }
+                    console.log("sending " + data);
                     let result = await encryption.encryptAndSign(data, this.state.keys);
                     return ws.send(JSON.stringify(result));
                 },
@@ -466,7 +473,6 @@ class TerraformTerminal extends Component {
 
     send = this.send.bind(this);
 
-    // Todo: This won't work
     send(message) {
         console.log("sent triggered")
         let ws = this.state.webSocket
