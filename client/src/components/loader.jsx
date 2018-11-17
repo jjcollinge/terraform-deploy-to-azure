@@ -75,16 +75,19 @@ const setVariables = async (props, variables) => {
             name: key,
             value: defaultValue,
             type: TEXT_FIELD,
+            secret: false,
         });
     };
     props.addVariable({
         name: "azure_subscription_id",
-        type: TEXT_FIELD
+        type: TEXT_FIELD,
+        secret: true,
     });
     // TODO: Remove - bypassing AAD block
     props.addVariable({
         name: "azure_token",
-        type: TEXT_FIELD
+        type: TEXT_FIELD,
+        secret: true,
     });
 }
 

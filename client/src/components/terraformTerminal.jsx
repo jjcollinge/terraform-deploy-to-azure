@@ -151,8 +151,9 @@ class TerraformTerminal extends Component {
             let msi = await this.createManagedIdentity(identityName);
 
             // Sleep long enough for AAD to become consistent
+            // SLA is 2 minutes. TODO: Replace with poll.
             this.warn("Waiting for AAD update to propogate")
-            await sleep(60000);
+            await sleep(120000);
 
             await this.grantIdentityPermission(msi);
 

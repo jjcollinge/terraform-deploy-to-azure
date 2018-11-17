@@ -54,7 +54,7 @@ class VariablesForm extends Component {
                                 <Grid container
                                     direction="column"
                                     className="variablesform-field">
-                                    <Field name={v.name} component={renderField} type="text" label={v.name} validate={[required]} />
+                                    <Field name={v.name} component={renderField} type={v.secret ? 'password' : 'text'} label={v.name} validate={[required]} />
                                 </Grid>
                             </Grid>
                         )}
