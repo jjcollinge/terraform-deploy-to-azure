@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import { Grid } from '@material-ui/core';
-import { incrementStage } from '../actions/stageActions';
+import { incrementStage, decrementStage } from '../actions/stageActions';
 import { connect } from 'react-redux';
 import { Terminal } from 'xterm';
 import * as fit from 'xterm/lib/addons/fit/fit';
@@ -42,6 +42,7 @@ class TerraformTerminal extends Component {
         subscriptionId: "",
         resourceGroupName: "",
         token: "",
+        isDeleting: false,
     }
 
     componentWillMount() {
@@ -139,6 +140,7 @@ class TerraformTerminal extends Component {
             let token = this.props.variables.find(o => o.name == 'azure_token').value;  //TODO: This will come from user once AAD is sorted
             this.setState({ token: token });
 
+            // Required by Terraform to select correct subscription
             aciContainerEnvironmentVars.push({
                 name: "ARM_SUBSCRIPTION_ID",
                 value: this.state.subscriptionId,
@@ -210,10 +212,23 @@ class TerraformTerminal extends Component {
             xterm.writeln(colors.greenBright("\r\nuser@tfdeploy:") + colors.blueBright("/git") + "$ terraform apply \n\n");
 
         } catch (e) {
-            console.log(e);
-            this.err("An error occurred while connecting to the deployment container: " + e.toString())
+            if (!this.state.isDeleting) {
+                console.log(e);
+                this.err("An error occurred while connecting to the deployment container: " + e.toString())
+            }
         }
         clearInterval(t);
+    }
+
+    goBack = this.goBack.bind(this);
+
+    async goBack(e) {
+        e.preventDefault();
+        if (this.state.resourceGroupName !== "") {
+            this.warn(`Cancelling deployment, any partitially deployed resources will not be deleted. Please wait.`)
+            await this.deleteResourceGroup(this.state.resourceGroupName)
+        }
+        this.props.decrementStage();
     }
 
     render() {
@@ -229,6 +244,13 @@ class TerraformTerminal extends Component {
                 style={terminalStyle}
                 className="preview-terminal">
                 <div id='terminal'></div>
+                <Grid
+                    container
+                    direction="row"
+                    justify="flex-start">
+                    <button className="btn btn-primary preview-back-btn"
+                        onClick={this.goBack} type="submit">Back</button>
+                </Grid>
             </Grid>
         </Grid>
         )
@@ -238,6 +260,12 @@ class TerraformTerminal extends Component {
 
     async createManagedIdentity(name) {
         let { subscriptionId, token, resourceGroupName } = this.state;
+
+        if (this.state.isDeleting) {
+            console.log("operation is cancelled");
+            throw "Operation cancelled as deletion in progress";
+        }
+
         this.info(`Creating deployment identity '${name}'`);
 
         const creds = new msRest.TokenCredentials(token);
@@ -254,6 +282,12 @@ class TerraformTerminal extends Component {
 
     async grantIdentityPermission(msi) {
         let { subscriptionId, token } = this.state;
+
+        if (this.state.isDeleting) {
+            console.log("operation is cancelled")
+            throw "Operation cancelled as deletion in progress";
+        }
+
         this.info(`Granting identity permission to ARM`);
 
         const creds = new msRest.TokenCredentials(token);
@@ -271,6 +305,11 @@ class TerraformTerminal extends Component {
 
     async createResourceGroup(name) {
         let { subscriptionId, token } = this.state;
+
+        if (this.state.isDeleting) {
+            console.log("operation is cancelled")
+            throw "Operation cancelled as deletion in progress";
+        }
 
         this.info(`Creating deployment resource group '${name}'`)
         const creds = new msRest.TokenCredentials(token);
@@ -294,11 +333,16 @@ class TerraformTerminal extends Component {
             return
         }
 
-        this.info(`Deleting deployment resource group '${resourceGroupName}'\n\n`)
+        if (this.state.isDeleting) {
+            throw "Operation cancelled as deletion in progress";
+        }
+        this.setState({isDeleting: true});
+
+        this.info(`Deleting deployment resource group '${resourceGroupName}'\n`)
         const creds = new msRest.TokenCredentials(token);
         const client = new ResourceManagementClient(creds, subscriptionId);
 
-        let group = await client.resourceGroups.delete(resourceGroupName);
+        let group = await client.resourceGroups.deleteMethod(resourceGroupName);
 
         return
     }
@@ -307,6 +351,12 @@ class TerraformTerminal extends Component {
 
     async createACIInstance(identity, containerGroupName, repoUrl, repoCommitHash, tfvars) {
         let { subscriptionId, token, resourceGroupName } = this.state;
+
+        if (this.state.isDeleting) {
+            console.log("operation is cancelled")
+            throw "Operation cancelled as deletion in progress";
+        }
+
         this.info("Starting deployment container")
 
         const creds = new msRest.TokenCredentials(token);
@@ -403,6 +453,11 @@ class TerraformTerminal extends Component {
     async connect(address, onClose) {
         let buff = [];
 
+        if (this.state.isDeleting) {
+            console.log("operation is cancelled")
+            throw "Operation cancelled as deletion in progress";
+        }
+
         return new Promise((resolve, reject) => {
             // Second connection suceeds
             let ws = new WebSocket("ws://" + address + ":3012/terminal");
@@ -493,6 +548,9 @@ const mapStateToProps = state => ({
 const mapDispatchToProps = dispatch => ({
     incrementStage: () => {
         dispatch(incrementStage());
+    },
+    decrementStage: () => {
+        dispatch(decrementStage());
     }
 })
 

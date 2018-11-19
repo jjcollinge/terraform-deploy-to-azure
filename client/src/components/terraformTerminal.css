@@ -3,13 +3,17 @@
 }
 
 .preview-terminal {
-    background-color: #161616;
     width: 70%;
     flex: 1;
-    border-radius:5px;
-    color: #ffffff;
 }
 
 .terminal, .xterm {
     padding: 20px !important;
+}
+
+.preview-back-btn {
+    margin-top: 20px;
+    width: 10%;
+    color: #ffffff;
+    background-color:  #5C4EE5;
 }

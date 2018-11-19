@@ -1,18 +1,24 @@
-.gitmodal-title{
+.gitmodal-title {
     text-align: center;
 }
 
-.gitmodal-form{
+.gitmodal-form {
     width: 400px;
     margin: 20px;
     display: grid;
 }
 
+.btn:focus, .btn:focus, .btn:active, .btn::-moz-focus-inner {
+	border: none;
+}
+
 .gitmodal-form-submit {
     margin: 5% auto;
     width: 50%;
+    background-color:  #5C4EE5;
+    color: #ffffff;
 }
 
-#gitmodal-label {
+.gitmodal-hint {
     color: #AAAAAA;
 }

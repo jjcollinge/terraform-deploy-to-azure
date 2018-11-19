@@ -33,7 +33,9 @@ class GitModal extends Component {
 
         this.state = {
             modalIsOpen: true,
-            gitURLProvided: false
+            gitURLProvided: false,
+            prompt: "Please enter your GitHub repo",
+            hint: "i.e. https://github.com/username/repo",
         };
 
         this.setGit = props.setGit
@@ -61,7 +63,7 @@ class GitModal extends Component {
         let gitURL = document.getElementById("giturl").value;
         if (!isValidGitUrl(gitURL)) {
             console.error("invalid Git URL")
-            document.getElementById("gitmodal-label").innerText = "Invalid Git URL";
+            this.setState({ hint: "invalid GitHub repo URL"})
             return;
         }
         this.setGit(gitURL)
@@ -75,16 +77,16 @@ class GitModal extends Component {
                     isOpen={this.state.modalIsOpen}
                     onAfterOpen={this.afterOpenModal}
                     onRequestClose={this.closeModal}
-                    contentLabel="Git URL prompt"
+                    contentLabel="GitHub URL prompt"
                     style={customStyles}>
                     <div className="gitmodal-title">
-                        <h2>Please enter your Git repo URL</h2>
-                        <h5 id="gitmodal-label">https://github.com/username/repo</h5>
+                        <h2>{this.state.prompt}</h2>
+                        <h5 className="gitmodal-hint">{this.state.hint}</h5>
                     </div>
                     <form onSubmit={this.onSubmit} className="gitmodal-form">
                         <input id="giturl" type="text" placeholder="https://github.com/jjcollinge/tfexample" />
                         <button type="submit"
-                        className="btn btn-primary gitmodal-form-submit">OK</button>
+                        className="btn gitmodal-form-submit">OK</button>
                     </form>
                 </Modal>
             </div>

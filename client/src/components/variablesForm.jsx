@@ -62,9 +62,9 @@ class VariablesForm extends Component {
                             container
                             justify="flex-end"
                             direction="row">
-                            <button className="variablesform-btn btn btn-primary"
+                            <button className="btn variablesform-btn"
                                 disabled={this.props.submitting}
-                                type="submit">Exceute Plan</button>
+                                type="submit">Plan</button>
                         </Grid>
                     </Grid>
                 </form>
