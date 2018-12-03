@@ -1,7 +1,0 @@
-[package]
-name = "deployer"
-version = "0.1.0"
-authors = ["Lawrence Gripper <info@grippers.co.uk>"]
-
-[dependencies]
-ws = { version = "*"}
